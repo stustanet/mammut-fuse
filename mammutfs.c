@@ -43,16 +43,6 @@
 #include <sys/xattr.h>
 #endif
 
-// Report errors to logfile and give -errno to caller
-static int mammut_error(const char *str)
-{
-	int ret = -errno;
-
-	printf("Error %s\n", str);
-
-	return ret;
-}
-
 static struct mammut_data {
 	char *userid;
 	char **raids;
@@ -69,9 +59,18 @@ enum MAMMUT_PATH_MODE {
 	MODE_PIPETHROUGH_RW
 };
 
-static int _mammut_locate_userdir (char *fpath, const char *userid, const char *subdir) {
+// Report errors to logfile and give -errno to caller
+static int mammut_error(const char *str)
+{
+	int ret = -errno;
+	printf("Error %s\n", str);
+	return ret;
+}
+
+static int _mammut_locate_userdir (char *fpath, const char *userid, const char *subdir)
+{
 	int ok = 0;
-	size_t i; 
+	size_t i;
 	for (i = 0; i < MAMMUT_DATA.raid_count; ++i) {
 		strcpy(fpath, MAMMUT_DATA.raids[i]);
 		strcat(fpath, "/");
@@ -93,10 +92,11 @@ static int _mammut_locate_userdir (char *fpath, const char *userid, const char *
 		strcat(fpath, "/");
 	}
 	printf("userid: %s, subdir %s fpath: %s\n", fpath, userid, subdir);
-	return ok; 
+	return ok;
 }
 
-static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_PATH_MODE* mode) {
+static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_PATH_MODE* mode)
+{
 	//strukutur pfad public/private.../: ./users/USERID/public → /"raid"/public/USERID/
 	//strukutur pfad anon pfad: ./export/anon  → Virtuell Anon verzeichnis
 	*mode = MODE_HOMEDIR;
@@ -166,33 +166,20 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
-	retstat = lstat(fpath, statbuf);
-	if (retstat != 0)
+	if ((retstat = lstat(fpath, statbuf)))
 		retstat = mammut_error("mammut_getattr lstat");
 
-	switch (mode) {
-		case MODE_PIPETHROUGH_ANON: 
-			///Eliminate all User-IDs from the file
-			statbuf->st_uid = 1000; ///TODO which user? 
-			if (S_ISREG(statbuf->st_mode)) {
-				statbuf->st_mode |= 0004; 
-			} else if (S_ISDIR(statbuf->st_mode)) {
-				statbuf->st_mode |= 0005;
-			} 
-			break; 
-		case MODE_PIPETHROUGH_RO: 
-		case MODE_HOMEDIR:
-		case MODE_LISTDIR_ANON:
-		case MODE_LISTDIR_PUBLIC:
-			if (S_ISREG(statbuf->st_mode)) {
-				statbuf->st_mode |= 0004; 
-			} else if (S_ISDIR(statbuf->st_mode)) {
-				statbuf->st_mode |= 0005;
-			} 
-			break;
-		case MODE_PIPETHROUGH_RW:
-			break;
-	}
+	if (mode == MODE_PIPETHROUGH_RW)
+		return retstat;
+
+	if (mode == MODE_PIPETHROUGH_ANON)
+		// Eliminate all User-IDs from the file
+		statbuf->st_uid = 1000; ///TODO which user?
+
+	if (S_ISREG(statbuf->st_mode))
+		statbuf->st_mode |= 0004;
+	else if (S_ISDIR(statbuf->st_mode))
+		statbuf->st_mode |= 0005;
 
 	return retstat;
 }
