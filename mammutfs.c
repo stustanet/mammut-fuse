@@ -68,7 +68,7 @@ static void _mammut_locate_userdir (char *fpath, const char *userid, const char 
 
 }
 
-static int mammut_fullpath(char fpath[PATH_MAX], const char *path, MAMMUT_PATH_MODE* mode) {
+static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_PATH_MODE* mode) {
 	//strukutur pfad public/private.../: ./users/USERID/public → /"raid"/public/USERID/
 	//strukutur pfad anon pfad: ./export/anon  → Virtuell Anon verzeichnis
 
@@ -76,42 +76,38 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, MAMMUT_PATH_M
 	char *my_path = strdup(path);
 	char *token;
 	char *saveptr;
+	char* other_id;
 
-	while ((*mode != MODE_PIPETHROUGH_RW && *mode != MODE_PIPETHROUGH_RO && *mode != MODE_PIPETHROUGH_ANON) 
-			&& 0 != (token = strtok_r(my_path, "/", &saveptr ))) {
+	while (*mode != MODE_PIPETHROUGH_RW &&
+	       *mode != MODE_PIPETHROUGH_RO &&
+	       *mode != MODE_PIPETHROUGH_ANON &&
+	       (token = strtok_r(my_path, "/", &saveptr))) {
 		switch(*mode) {
-			case MODE_HOMEDIR: 
-				{
-					if (0 == strncmp(token, "public", sizeof("public")) || 
-							0 == strncmp(token, "private", sizeof("private")) || 
-							0 == strncmp(token, "anonymous", sizeof ("anonymous"))) {
-						strcpy(fpath, basepath); ///TODO BASEPATH
-						if (0 != token) { 
-							strcat(fpath, token);
-						}
-						*mode = MODE_PIPETHROUGH_RW; 
-					} else if (0 == strncmp(token, "list-anon", sizeof("list-anon"))) {
-						*mode = MODE_LISTDIR_ANON;
-					} else if (0 == strncmp(token, "list-public", sizeof("list-public"))) {
-						*mode = MODE_LISTDIR_PUBLIC;
-					} else 
-						return -42;
+			case MODE_HOMEDIR:
+				if (!strcmp(token, "public") || !strcmp(token, "private") ||
+					!strcmp(token, "anonymous")) {
+					strcpy(fpath, basepath); ///TODO BASEPATH
+					if (token)
+						strcat(fpath, token);
+					*mode = MODE_PIPETHROUGH_RW;
+				} else if (!strcmp(token, "list-anon")) {
+					*mode = MODE_LISTDIR_ANON;
+				} else if (!strcmp(token, "list-public")) {
+					*mode = MODE_LISTDIR_PUBLIC;
+				} else {
+					return -42;
 				}
 				break;
-			case MODE_LISTDIR_PUBLIC: 
-				{ 
-					char* other_id = token;
-					*mode = MODE_PIPETHROUGH_RO; 
-					_mammut_locate_userdir(fpath, other_id, "public"); 
-				}
+			case MODE_LISTDIR_PUBLIC:
+				other_id = token;
+				*mode = MODE_PIPETHROUGH_RO;
+				_mammut_locate_userdir(fpath, other_id, "public");
 				break;
-			case MODE_LISTDIR_ANON: 
-				{ 
-					///TODO Subdirecotory of anon: userid 
-					char* other_id = token; ///TODO Locate other ID
-					*mode = MODE_PIPETHROUGH_ANON; 
-					_mammut_locate_userdir(fpath, other_id, "anonymous");
-				}
+			case MODE_LISTDIR_ANON:
+				///TODO Subdirecotory of anon: userid
+				other_id = token; ///TODO Locate other ID
+				*mode = MODE_PIPETHROUGH_ANON;
+				_mammut_locate_userdir(fpath, other_id, "anonymous");
 				break;
 			default: break;
 		}
@@ -135,7 +131,7 @@ int mammut_getattr(const char *path, struct stat *statbuf)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	retstat = lstat(fpath, statbuf);
@@ -186,7 +182,7 @@ int mammut_readlink(const char *path, char *link, size_t size)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	retstat = readlink(fpath, link, size - 1);
