@@ -117,7 +117,6 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 			case MODE_HOMEDIR:
 				if (!strcmp(token, "public") || !strcmp(token, "private") ||
 					!strcmp(token, "anonymous")) {
-					if (token)
 						strcat(fpath, token);
 					*mode = MODE_PIPETHROUGH_RW;
 				} else if (!strcmp(token, "list-anonymous")) {
@@ -143,6 +142,7 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 			default: break;
 		}
 	}
+	strcat(fpath, MAMMUT_DATA.userid);
 	printf("fPath: %s last token: %s\n", fpath, token);
 	return 0;
 }
@@ -831,12 +831,10 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 	(void)offset;
 
 	int retstat = 0;
-	DIR *dp;
-	struct dirent *de;
 	char fPath [PATH_MAX];
 
 	// once again, no need for fullpath -- but note that I need to cast fi->fh
-	dp = (DIR *) (uintptr_t) fi->fh;
+	//dp = (DIR *) (uintptr_t) fi->fh;
 
 	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fPath, path, &mode);
@@ -858,12 +856,16 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 		case MODE_PIPETHROUGH_RO:
 		case MODE_PIPETHROUGH_RW:
 		case MODE_PIPETHROUGH_ANON:
-			de = readdir(dp);
-			do {
-				if (filler(buf, de->d_name, NULL, 0) != 0) {
-					return -ENOMEM;
-				}
-			} while ((de = readdir(dp)) != NULL);
+			{
+				printf("Iterating through path %s\n", fPath);
+				DIR *dp = opendir(fPath);
+				struct dirent *de = readdir(dp);
+				do {
+					if (filler(buf, de->d_name, NULL, 0) != 0) {
+						return -ENOMEM;
+					}
+				} while ((de = readdir(dp)) != NULL);
+			}
 			break;
 		case MODE_HOMEDIR:
 			filler(buf, ".", NULL, 0);
