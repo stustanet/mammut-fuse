@@ -4,8 +4,8 @@ LIBS = -L/usr/lib -lc `pkg-config --libs fuse`
 
 # flags
 CPPFLAGS = `pkg-config --cflags fuse`
-CFLAGS = -Wall -Os ${INCS} ${CPPFLAGS}
-LDFLAGS = -s ${LIBS}
+CFLAGS =  -g -std=gnu99 -Wall -O0  ${INCS} ${CPPFLAGS}
+LDFLAGS = ${LIBS}
 
 # compiler and linker
 CC = cc

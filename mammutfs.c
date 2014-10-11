@@ -24,6 +24,7 @@
    gcc -Wall `pkg-config fuse --cflags --libs` -o bbfs bbfs.c
    */
 
+#define FUSE_USE_VERSION 26
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -36,6 +37,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <linux/limits.h>
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
@@ -51,51 +53,80 @@ static int mammut_error(const char *str)
 	return ret;
 }
 
+static struct mammut_data {
+	char *userid;
+	char **raids;
+	size_t raid_count;
+	char *user_basepath;
+} MAMMUT_DATA;
+
 enum MAMMUT_PATH_MODE {
 	MODE_HOMEDIR,
 	MODE_LISTDIR_PUBLIC,
-	MODE_LISTDIR_ANON, 
-	MODE_PIPETHROUGH_ANON, 
+	MODE_LISTDIR_ANON,
+	MODE_PIPETHROUGH_ANON,
 	MODE_PIPETHROUGH_RO,
 	MODE_PIPETHROUGH_RW
 };
 
-static void _mammut_locate_userdir (char *fpath, const char *userid, const char *subdir) {
-	strcpy(fpath, "/var/raid");
-	strcpy(fpath, subdir);
-	strcpy(fpath, userid);
-	///TODO Locate xfs user filesystem
+static int _mammut_locate_userdir (char *fpath, const char *userid, const char *subdir) {
+	int ok = 0;
+	size_t i; 
+	for (i = 0; i < MAMMUT_DATA.raid_count; ++i) {
+		strcpy(fpath, MAMMUT_DATA.raids[i]);
+		strcat(fpath, "/");
+		strcat(fpath, subdir);
+		strcat(fpath, "/");
+		strcat(fpath, userid);
 
+		if (access(fpath, F_OK) != -1) {
+			ok = 1;
+			break;
+		}
+	}
+///TODO Locate xfs user filesystem
+
+	if (!ok) {
+		printf("FAIIIIIILL\n");
+	} else {
+		strcpy(fpath, MAMMUT_DATA.raids[i]);
+		strcat(fpath, "/");
+	}
+	printf("userid: %s, subdir %s fpath: %s\n", fpath, userid, subdir);
+	return ok; 
 }
 
 static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_PATH_MODE* mode) {
 	//strukutur pfad public/private.../: ./users/USERID/public → /"raid"/public/USERID/
 	//strukutur pfad anon pfad: ./export/anon  → Virtuell Anon verzeichnis
-
 	*mode = MODE_HOMEDIR;
 	char *my_path = strdup(path);
 	char *token;
 	char *saveptr;
-	char* other_id;
+	char *other_id;
+
+	printf("path: %s\n", path); 
+	strcpy(fpath, MAMMUT_DATA.user_basepath); 
 
 	while (*mode != MODE_PIPETHROUGH_RW &&
 	       *mode != MODE_PIPETHROUGH_RO &&
 	       *mode != MODE_PIPETHROUGH_ANON &&
 	       (token = strtok_r(my_path, "/", &saveptr))) {
+		printf("Token %s\n", token);
 		switch(*mode) {
 			case MODE_HOMEDIR:
 				if (!strcmp(token, "public") || !strcmp(token, "private") ||
 					!strcmp(token, "anonymous")) {
-					strcpy(fpath, basepath); ///TODO BASEPATH
 					if (token)
 						strcat(fpath, token);
 					*mode = MODE_PIPETHROUGH_RW;
-				} else if (!strcmp(token, "list-anon")) {
+				} else if (!strcmp(token, "list-anonymous")) {
 					*mode = MODE_LISTDIR_ANON;
 				} else if (!strcmp(token, "list-public")) {
 					*mode = MODE_LISTDIR_PUBLIC;
 				} else {
-					return -42;
+					printf("Listing Root directory");
+					return EACCES;
 				}
 				break;
 			case MODE_LISTDIR_PUBLIC:
@@ -112,6 +143,7 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 			default: break;
 		}
 	}
+	printf("fPath: %s last token: %s\n", fpath, token);
 	return 0;
 }
 
@@ -126,7 +158,7 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
  * ignored.  The 'st_ino' field is ignored except if the 'use_ino'
  * mount option is given.
  */
-int mammut_getattr(const char *path, struct stat *statbuf)
+static int mammut_getattr(const char *path, struct stat *statbuf)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -177,14 +209,14 @@ int mammut_getattr(const char *path, struct stat *statbuf)
 // null.  So, the size passed to to the system readlink() must be one
 // less than the size passed to mammut_readlink()
 // mammut_readlink() code by Bernardo F Costa (thanks!)
-int mammut_readlink(const char *path, char *link, size_t size)
+static int mammut_readlink(const char *path, char *link, size_t size)
 {
 	(void)path; 
 	(void)link; 
 	(void)size;
 
 	mammut_error("Not Implemented Yet"); 
-	return -43; 
+	return ENOENT; 
 /*
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -210,17 +242,17 @@ int mammut_readlink(const char *path, char *link, size_t size)
  * creation of all non-directory, non-symlink nodes.
  */
 // shouldn't that comment be "if" there is no.... ?
-int mammut_mknod(const char *path, mode_t mode, dev_t dev)
+static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 {
 	(void)path; 
 	(void)mode;
 	(void)dev;
 
-	return -44; 
+	return EACCES; 
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
+
 
 	MAMMUT_PATH_MODE mmode; 
 	mammut_fullpath(fpath, path, &mmode);
@@ -252,16 +284,16 @@ int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 }
 
 /** Create a directory */
-int mammut_mkdir(const char *path, mode_t mode)
+static int mammut_mkdir(const char *path, mode_t mode)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	MAMMUT_PATH_MODE mammut_mode; 
+
+	enum MAMMUT_PATH_MODE mammut_mode;
 	mammut_fullpath(fpath, path, &mammut_mode);
 
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
-		return -45; 
+		return EACCES; 
 
 	retstat = mkdir(fpath, mode);
 	if (retstat < 0)
@@ -271,16 +303,16 @@ int mammut_mkdir(const char *path, mode_t mode)
 }
 
 /** Remove a file */
-int mammut_unlink(const char *path)
+static int mammut_unlink(const char *path)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return -46; 
+		return EACCES;
 
 	retstat = unlink(fpath);
 	if (retstat < 0)
@@ -290,16 +322,16 @@ int mammut_unlink(const char *path)
 }
 
 /** Remove a directory */
-int mammut_rmdir(const char *path)
+static int mammut_rmdir(const char *path)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return -47;
+		return EACCES;
 
 	retstat = rmdir(fpath);
 	if (retstat < 0)
@@ -313,16 +345,16 @@ int mammut_rmdir(const char *path)
 // to the symlink() system call.  The 'path' is where the link points,
 // while the 'link' is the link itself.  So we need to leave the path
 // unaltered, but insert the link into the mounted directory.
-int mammut_symlink(const char *path, const char *link)
+static int mammut_symlink(const char *path, const char *link)
 {
 	int retstat;
 	char flink[PATH_MAX];
-	
-	MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(flink, link, &mode);
-	
-	if (mode != MODE_PIPETHROUGH_RW) 
-		return -48;
+
+	if (mode != MODE_PIPETHROUGH_RW)
+		return EACCES;
 
 	retstat = symlink(path, flink);
 	if (retstat < 0)
@@ -333,22 +365,22 @@ int mammut_symlink(const char *path, const char *link)
 
 /** Rename a file */
 // both path and newpath are fs-relative
-int mammut_rename(const char *path, const char *newpath)
+static int mammut_rename(const char *path, const char *newpath)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	char fnewpath[PATH_MAX];
-	
-	MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return -49;
+		return EACCES;
 
 	mammut_fullpath(fnewpath, newpath, &mode);
 
-	if (mode != MODE_PIPETHROUGH_RW) 
-		return -50; 
+	if (mode != MODE_PIPETHROUGH_RW)
+		return EACCES;
 
 	retstat = rename(fpath, fnewpath);
 	if (retstat < 0)
@@ -358,15 +390,17 @@ int mammut_rename(const char *path, const char *newpath)
 }
 
 /** Create a hard link to a file */
-int mammut_link(const char *path, const char *newpath)
+static int mammut_link(const char *path, const char *newpath)
 {
-	
-	return -51; 
+	(void)path; 
+	(void)newpath; 
+
+	return EACCES; 
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX], fnewpath[PATH_MAX];
 	
-	mammut_fullpath(fpath, path, &mode);
+	meammut_fullpath(fpath, path, &mode);
 	mammut_fullpath(fnewpath, newpath);
 
 	retstat = link(fpath, fnewpath);
@@ -378,16 +412,16 @@ int mammut_link(const char *path, const char *newpath)
 }
 
 /** Change the permission bits of a file */
-int mammut_chmod(const char *path, mode_t mode)
+static int mammut_chmod(const char *path, mode_t mode)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	
-	MAMMUT_PATH_MODE mammut_mode; 
+	enum MAMMUT_PATH_MODE mammut_mode; 
 	mammut_fullpath(fpath, path, &mammut_mode);
 
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
-		return -52;
+		return EACCES;
 
 	retstat = chmod(fpath, mode);
 	if (retstat < 0)
@@ -397,13 +431,13 @@ int mammut_chmod(const char *path, mode_t mode)
 }
 
 /** Change the owner and group of a file */
-int mammut_chown(const char *path, uid_t uid, gid_t gid)
+static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 {
 
 	(void)path; 
 	(void)uid;
-	(void)git; 
-	return -53; 
+	(void)gid; 
+	return EACCES; 
 
 	/*
 	int retstat = 0;
@@ -420,13 +454,13 @@ int mammut_chown(const char *path, uid_t uid, gid_t gid)
 }
 
 /** Change the size of a file */
-int mammut_truncate(const char *path, off_t newsize)
+static int mammut_truncate(const char *path, off_t newsize)
 {
 	//TODO Idee: Limit newsize to 10G? 
 
 	(void)path; 
 	(void)newsize; 
-	return -54; 
+	return EACCES; 
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -443,16 +477,16 @@ int mammut_truncate(const char *path, off_t newsize)
 
 /** Change the access and/or modification times of a file */
 /* note -- I'll want to change this as soon as 2.6 is in debian testing */
-int mammut_utime(const char *path, struct utimbuf *ubuf)
+static int mammut_utime(const char *path, struct utimbuf *ubuf)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode; 
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return -55; 
+		return EACCES; 
 
 	retstat = utime(fpath, ubuf);
 	if (retstat < 0)
@@ -471,17 +505,17 @@ int mammut_utime(const char *path, struct utimbuf *ubuf)
  *
  * Changed in version 2.2
  */
-int mammut_open(const char *path, struct fuse_file_info *fi)
+static int mammut_open(const char *path, struct fuse_file_info *fi)
 {
 	int retstat = 0;
 	int fd;
 	char fpath[PATH_MAX];
-	
-	MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
-	if (mode != MODE_PIPETHROUGH_RW && (fi->flags != O_RDONLY)) 
-		return -56;
+	if (mode != MODE_PIPETHROUGH_RW && (fi->flags != O_RDONLY))
+		return EACCES;
 
 	fd = open(fpath, fi->flags);
 	if (fd < 0)
@@ -508,13 +542,11 @@ int mammut_open(const char *path, struct fuse_file_info *fi)
 // can return with anything up to the amount of data requested. nor
 // with the fusexmp code which returns the amount of data also
 // returned by read.
-int mammut_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+static int mammut_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-	(void)path; 
-	
-	int retstat = 0;
+	(void)path;
 
-	retstat = pread(fi->fh, buf, size, offset);
+	int retstat = pread(fi->fh, buf, size, offset);
 	if (retstat < 0)
 		retstat = mammut_error("mammut_read read");
 
@@ -531,7 +563,7 @@ int mammut_read(const char *path, char *buf, size_t size, off_t offset, struct f
  */
 // As  with read(), the documentation above is inconsistent with the
 // documentation for the write() system call.
-int mammut_write(const char *path, const char *buf, size_t size, off_t offset,
+static int mammut_write(const char *path, const char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
 	(void) path; 
@@ -551,7 +583,7 @@ int mammut_write(const char *path, const char *buf, size_t size, off_t offset,
  * Replaced 'struct statfs' parameter with 'struct statvfs' in
  * version 2.5
  */
-int mammut_statfs(const char *path, struct statvfs *statv)
+static int mammut_statfs(const char *path, struct statvfs *statv)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -590,13 +622,13 @@ int mammut_statfs(const char *path, struct statvfs *statv)
  *
  * Changed in version 2.2
  */
-int mammut_flush(const char *path, struct fuse_file_info *fi)
+static int mammut_flush(const char *path, struct fuse_file_info *fi)
 {
 	(void)path;
-	(void)fi; 
+	(void)fi;
 
 	int retstat = 0;
-	
+
 	return retstat;
 }
 
@@ -614,9 +646,9 @@ int mammut_flush(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-int mammut_release(const char *path, struct fuse_file_info *fi)
+static int mammut_release(const char *path, struct fuse_file_info *fi)
 {
-	(void) path; 
+	(void) path;
 	int retstat = 0;
 
 	// We need to close the file.  Had we allocated any resources
@@ -633,11 +665,11 @@ int mammut_release(const char *path, struct fuse_file_info *fi)
  *
  * Changed in version 2.2
  */
-int mammut_fsync(const char *path, int datasync, struct fuse_file_info *fi)
+static int mammut_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 {
-	(void)path; 
+	(void)path;
 	(void)datasync;
-	
+
 	int retstat = 0;
 
 	// some unix-like systems (notably freebsd) don't have a datasync call
@@ -645,7 +677,7 @@ int mammut_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 	if (datasync)
 		retstat = fdatasync(fi->fh);
 	else
-#endif	
+#endif
 		retstat = fsync(fi->fh);
 
 	if (retstat < 0)
@@ -656,16 +688,16 @@ int mammut_fsync(const char *path, int datasync, struct fuse_file_info *fi)
 
 #ifdef HAVE_SYS_XATTR_H
 /** Set extended attributes */
-int mammut_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
+static int mammut_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	enum MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path &mode);
-	
+
 	if (mode != MODE_PIPETHROUGH_RW)
-		return ENOTSUP; 
+		return EACCES;
 
 	retstat = lsetxattr(fpath, name, value, size, flags);
 	if (retstat < 0)
@@ -675,12 +707,12 @@ int mammut_setxattr(const char *path, const char *name, const char *value, size_
 }
 
 /** Get extended attributes */
-int mammut_getxattr(const char *path, const char *name, char *value, size_t size)
+static int mammut_getxattr(const char *path, const char *name, char *value, size_t size)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	enum MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	retstat = lgetxattr(fpath, name, value, size);
@@ -692,13 +724,13 @@ int mammut_getxattr(const char *path, const char *name, char *value, size_t size
 }
 
 /** List extended attributes */
-int mammut_listxattr(const char *path, char *list, size_t size)
+static int mammut_listxattr(const char *path, char *list, size_t size)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	char *ptr;
 
-	enum MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	retstat = llistxattr(fpath, list, size);
@@ -711,16 +743,16 @@ int mammut_listxattr(const char *path, char *list, size_t size)
 }
 
 /** Remove extended attributes */
-int mammut_removexattr(const char *path, const char *name)
+static int mammut_removexattr(const char *path, const char *name)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	enum MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	if(mode != MODE_PIPETHROUGH_RW)
-		return ENOTSUP; 
+		return ENOTSUP;
 
 	retstat = lremovexattr(fpath, name);
 	if (retstat < 0)
@@ -737,22 +769,37 @@ int mammut_removexattr(const char *path, const char *name)
  *
  * Introduced in version 2.3
  */
-int mammut_opendir(const char *path, struct fuse_file_info *fi)
+static int mammut_opendir(const char *path, struct fuse_file_info *fi)
 {
 	DIR *dp;
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	enum MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
+	switch (mode) {
+	case MODE_LISTDIR_ANON:
+		break;
 
-	dp = opendir(fpath);
-	if (dp == NULL)
-		retstat = mammut_error("mammut_opendir opendir");
+	case MODE_LISTDIR_PUBLIC:
 
-	fi->fh = (intptr_t) dp;
+		break;
 
+
+	case MODE_PIPETHROUGH_ANON:
+	case MODE_PIPETHROUGH_RW:
+	case MODE_PIPETHROUGH_RO:
+		dp = opendir(fpath);
+		if (dp == NULL)
+			retstat = mammut_error("mammut_opendir opendir");
+
+		fi->fh = (intptr_t) dp;
+		break;
+	case MODE_HOMEDIR:
+
+		break;
+	}
 	return retstat;
 }
 
@@ -777,38 +824,80 @@ int mammut_opendir(const char *path, struct fuse_file_info *fi)
  *
  * Introduced in version 2.3
  */
-int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
+static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 		struct fuse_file_info *fi)
 {
-	(void)path; 
-	(void)offset; 
+	(void)path;
+	(void)offset;
 
 	int retstat = 0;
 	DIR *dp;
 	struct dirent *de;
+	char fPath [PATH_MAX];
 
 	// once again, no need for fullpath -- but note that I need to cast fi->fh
 	dp = (DIR *) (uintptr_t) fi->fh;
+
+	enum MAMMUT_PATH_MODE mode;
+	mammut_fullpath(fPath, path, &mode);
 
 	// Every directory contains at least two entries: . and ..  If my
 	// first call to the system readdir() returns NULL I've got an
 	// error; near as I can tell, that's the only condition under
 	// which I can get an error from readdir()
-	de = readdir(dp);
-	if (de == 0) {
-		retstat = mammut_error("mammut_readdir readdir");
-		return retstat;
-	}
+	//if (de == 0) {
+	//	retstat = mammut_error("mammut_readdir readdir");
+	//	return retstat;
+	//}
 
 	// This will copy the entire directory into the buffer.  The loop exits
 	// when either the system readdir() returns NULL, or filler()
 	// returns something non-zero.  The first case just means I've
 	// read the whole directory; the second means the buffer is full.
-	do {
-		if (filler(buf, de->d_name, NULL, 0) != 0) {
-			return -ENOMEM;
-		}
-	} while ((de = readdir(dp)) != NULL);
+	switch (mode) {
+		case MODE_PIPETHROUGH_RO:
+		case MODE_PIPETHROUGH_RW:
+		case MODE_PIPETHROUGH_ANON:
+			de = readdir(dp);
+			do {
+				if (filler(buf, de->d_name, NULL, 0) != 0) {
+					return -ENOMEM;
+				}
+			} while ((de = readdir(dp)) != NULL);
+			break;
+		case MODE_HOMEDIR:
+			filler(buf, ".", NULL, 0);
+			filler(buf, "..", NULL, 0);
+			filler(buf, "public", NULL, 0);
+			filler(buf, "anonymous", NULL, 0);
+			filler(buf, "private", NULL, 0);
+			filler(buf, "backup", NULL, 0);
+			filler(buf, "list-public", NULL, 0);
+			filler(buf, "list-anonymous", NULL, 0);
+			break;
+		case MODE_LISTDIR_PUBLIC:
+			filler(buf, ".", NULL, 0);
+			filler(buf, "..", NULL, 0);
+			for (size_t i = 0; i < MAMMUT_DATA.raid_count; ++i)  {
+				DIR *cur_raid;
+				cur_raid = opendir(MAMMUT_DATA.raids[i]);
+				struct dirent *dirent;
+				do {
+					// eat the . and .. of the raid-dirs
+					if(strncmp(dirent->d_name, ".", 1) == 0 || strncmp(dirent->d_name, "..", 2) == 0)
+						continue;
+
+					filler(buf, dirent->d_name, NULL, 0);
+				} while ((dirent = readdir(cur_raid)) != NULL);
+			}
+
+			break;
+		case MODE_LISTDIR_ANON:
+			break; //TODO Heftik Grass
+	}
+
+
+
 
 	return retstat;
 }
@@ -817,7 +906,7 @@ int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t of
  *
  * Introduced in version 2.3
  */
-int mammut_releasedir(const char *path, struct fuse_file_info *fi)
+static int mammut_releasedir(const char *path, struct fuse_file_info *fi)
 {
 	(void)path;
 	int retstat = 0;
@@ -836,7 +925,7 @@ int mammut_releasedir(const char *path, struct fuse_file_info *fi)
  */
 // when exactly is this called?  when a user calls fsync and it
 // happens to be a directory? ???
-int mammut_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
+static int mammut_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 {
 	(void)path; 
 	(void)datasync;
@@ -866,7 +955,9 @@ int mammut_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 void *mammut_init(struct fuse_conn_info *conn)
 {
 	(void) conn; 
-	static int MAMMUT_DATA; 
+
+	// TODO: get user raid and directory
+	// 
 	return &MAMMUT_DATA;
 }
 
@@ -893,22 +984,22 @@ void mammut_destroy(void *userdata)
  *
  * Introduced in version 2.5
  */
-int mammut_access(const char *path, int mask)
+static int mammut_access(const char *path, int mask)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	enum MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	retstat = access(fpath, mask);
-	
+
 	if (mode != MODE_PIPETHROUGH_RW)
-		mask &= ~W_OK; 
+		mask &= ~W_OK;
 
 	if (retstat < 0)
-
 		return retstat;
+	return mask;
 }
 
 /**
@@ -922,15 +1013,19 @@ int mammut_access(const char *path, int mask)
  * will be called instead.
  *
  * Introduced in version 2.5
- *//*
-int mammut_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+ */
+static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	int fd;
 
-	enum MAMMUT_PATH_MODE mode; 
-	mammut_fullpath(fpath, path, &mode);
+	enum MAMMUT_PATH_MODE mammut_mode; 
+	mammut_fullpath(fpath, path, &mammut_mode);
+	
+	if (mammut_mode != MODE_PIPETHROUGH_RW)
+		return EACCES;
+	
 
 	fd = creat(fpath, mode);
 	if (fd < 0)
@@ -939,7 +1034,7 @@ int mammut_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	fi->fh = fd;
 
 	return retstat;
-}*/
+}
 
 /**
  * Change the size of an open file
@@ -953,7 +1048,7 @@ int mammut_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  *
  * Introduced in version 2.5
  *//*
-int mammut_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
+static int mammut_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
 {
 	int retstat = 0;
 
@@ -976,7 +1071,7 @@ int mammut_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
  *
  * Introduced in version 2.5
  *//*
-int mammut_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
+static int mammut_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
 {
 	int retstat = 0;
 
@@ -1032,22 +1127,24 @@ struct fuse_operations mammut_oper = {
 	.fsyncdir = mammut_fsyncdir,
 	.init = mammut_init,
 	.destroy = mammut_destroy,
-	.access = mammut_access
-	//.create = mammut_create,
+	.access = mammut_access,
+	.create = mammut_create,
 	//.ftruncate = mammut_ftruncate,
 	//.fgetattr = mammut_fgetattr
 };
 
 void mammut_usage()
 {
-	fprintf(stderr, "usage:  bbfs [FUSE and mount options] rootDir mountPoint\n");
+	fprintf(stderr, "usage:  mammutfs fuseopts mountpoint userid -- raids\n");
 	abort();
 }
 
+
+
+//mammutfs [fuseopts] mountpoint userid -- raid1 raid2 ...
 int main(int argc, char *argv[])
 {
 	int fuse_stat;
-	struct mammut_state *mammut_data;
 
 	// bbfs doesn't do any access checking on its own (the comment
 	// blocks in fuse.h mention some of the functions that need
@@ -1063,31 +1160,46 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+
 	// Perform some sanity checking on the command line:  make sure
+	//
 	// there are enough arguments, and that neither of the last two
 	// start with a hyphen (this will break if you actually have a
 	// rootpoint or mountpoint whose name starts with a hyphen, but so
 	// will a zillion other programs)
-	if ((argc < 3) || (argv[argc-2][0] == '-') || (argv[argc-1][0] == '-'))
+	if ((argc < 5))
 		mammut_usage();
 
-	mammut_data = malloc(sizeof(struct mammut_state));
-	if (mammut_data == NULL) {
-		perror("main calloc");
-		abort();
+
+	int raid_offset;
+	for (raid_offset = 3; raid_offset < argc; ++raid_offset)
+		if (!strcmp(argv[raid_offset], "--")) break;
+
+	///raid_offset is now pointing to argv[raid_offset] == "--"
+	if (argc == raid_offset) {
+		mammut_usage();
+		return -1;
 	}
 
-	// Pull the rootdir out of the argument list and save it in my
+	MAMMUT_DATA.userid = argv[raid_offset - 1];
+	MAMMUT_DATA.raid_count = argc - raid_offset - 1;
+ 	if (!(MAMMUT_DATA.raids = (char**)malloc(MAMMUT_DATA.raid_count * sizeof(char*))))
+		exit(ENOMEM);
+
+	for (int i = raid_offset + 1, o = 0; i < argc; ++i, ++o) {
+		MAMMUT_DATA.raids[o] = strdup(argv[i]);
+	}
+	char fPath[PATH_MAX];
+	_mammut_locate_userdir(fPath, MAMMUT_DATA.userid, "public");
+	MAMMUT_DATA.user_basepath = strdup(fPath);
 	// internal data
-	mammut_data->rootdir = realpath(argv[argc-2], NULL);
-	argv[argc-2] = argv[argc-1];
-	argv[argc-1] = NULL;
-	argc--;
 
-
+	//argc -= MAMMUT_DATA.raid_count;
+	argc = raid_offset - 1;
+	printf("Raid Offset :%i\n", raid_offset);
 	// turn over control to fuse
 	fprintf(stderr, "about to call fuse_main\n");
-	fuse_stat = fuse_main(argc, argv, &mammut_oper, mammut_data);
+	fuse_stat = fuse_main(argc, argv, &mammut_oper, &MAMMUT_DATA);
 	fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
 	return fuse_stat;
