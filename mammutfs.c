@@ -71,7 +71,8 @@ static int _mammut_locate_userdir (char *fpath, const char *userid, const char *
 {
 	int ok = 0;
 	size_t i;
-	for (i = 0; i < MAMMUT_DATA.raid_count; ++i) {
+
+	for (i = 0; i < MAMMUT_DATA.raid_count; i++) {
 		strcpy(fpath, MAMMUT_DATA.raids[i]);
 		strcat(fpath, "/");
 		strcat(fpath, subdir);
@@ -223,12 +224,12 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 // mammut_readlink() code by Bernardo F Costa (thanks!)
 static int mammut_readlink(const char *path, char *link, size_t size)
 {
-	(void)path; 
-	(void)link; 
+	(void)path;
+	(void)link;
 	(void)size;
 
-	mammut_error("Not Implemented Yet"); 
-	return ENOENT; 
+	mammut_error("Not Implemented Yet");
+	return ENOENT;
 /*
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -256,17 +257,17 @@ static int mammut_readlink(const char *path, char *link, size_t size)
 // shouldn't that comment be "if" there is no.... ?
 static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 {
-	(void)path; 
+	(void)path;
 	(void)mode;
 	(void)dev;
 
-	return EACCES; 
+	return EACCES;
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
 
-	MAMMUT_PATH_MODE mmode; 
+	MAMMUT_PATH_MODE mmode;
 	mammut_fullpath(fpath, path, &mmode);
 
 	// On Linux this could just be 'mknod(path, mode, rdev)' but this
@@ -305,7 +306,7 @@ static int mammut_mkdir(const char *path, mode_t mode)
 	mammut_fullpath(fpath, path, &mammut_mode);
 
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
-		return EACCES; 
+		return EACCES;
 
 	retstat = mkdir(fpath, mode);
 	if (retstat < 0)
@@ -404,10 +405,10 @@ static int mammut_rename(const char *path, const char *newpath)
 /** Create a hard link to a file */
 static int mammut_link(const char *path, const char *newpath)
 {
-	(void)path; 
-	(void)newpath; 
+	(void)path;
+	(void)newpath;
 
-	return EACCES; 
+	return EACCES;
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX], fnewpath[PATH_MAX];
@@ -429,7 +430,7 @@ static int mammut_chmod(const char *path, mode_t mode)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	
-	enum MAMMUT_PATH_MODE mammut_mode; 
+	enum MAMMUT_PATH_MODE mammut_mode;
 	mammut_fullpath(fpath, path, &mammut_mode);
 
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
@@ -446,10 +447,10 @@ static int mammut_chmod(const char *path, mode_t mode)
 static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 {
 
-	(void)path; 
+	(void)path;
 	(void)uid;
-	(void)gid; 
-	return EACCES; 
+	(void)gid;
+	return EACCES;
 
 	/*
 	int retstat = 0;
@@ -468,11 +469,11 @@ static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 /** Change the size of a file */
 static int mammut_truncate(const char *path, off_t newsize)
 {
-	//TODO Idee: Limit newsize to 10G? 
+	//TODO Idee: Limit newsize to 10G?
 
-	(void)path; 
-	(void)newsize; 
-	return EACCES; 
+	(void)path;
+	(void)newsize;
+	return EACCES;
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -483,7 +484,7 @@ static int mammut_truncate(const char *path, off_t newsize)
 	if (retstat < 0)
 		mammut_error("mammut_truncate truncate");
 
-	return retstat; 
+	return retstat;
 	*/
 }
 
@@ -494,11 +495,11 @@ static int mammut_utime(const char *path, struct utimbuf *ubuf)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	enum MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES; 
+		return EACCES;
 
 	retstat = utime(fpath, ubuf);
 	if (retstat < 0)
@@ -578,7 +579,7 @@ static int mammut_read(const char *path, char *buf, size_t size, off_t offset, s
 static int mammut_write(const char *path, const char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
-	(void) path; 
+	(void) path;
 	int retstat = 0;
 
 	retstat = pwrite(fi->fh, buf, size, offset);
@@ -600,7 +601,7 @@ static int mammut_statfs(const char *path, struct statvfs *statv)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 	
-	enum MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	// get stats for underlying filesystem
@@ -942,7 +943,7 @@ static int mammut_releasedir(const char *path, struct fuse_file_info *fi)
 // happens to be a directory? ???
 static int mammut_fsyncdir(const char *path, int datasync, struct fuse_file_info *fi)
 {
-	(void)path; 
+	(void)path;
 	(void)datasync;
 	(void)fi;
 	int retstat = 0;
@@ -969,10 +970,10 @@ static int mammut_fsyncdir(const char *path, int datasync, struct fuse_file_info
 // FUSE).
 void *mammut_init(struct fuse_conn_info *conn)
 {
-	(void) conn; 
+	(void) conn;
 
 	// TODO: get user raid and directory
-	// 
+	//
 	return &MAMMUT_DATA;
 }
 
@@ -1045,7 +1046,7 @@ static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *f
 	char fpath[PATH_MAX];
 	int fd;
 
-	enum MAMMUT_PATH_MODE mammut_mode; 
+	enum MAMMUT_PATH_MODE mammut_mode;
 	mammut_fullpath(fpath, path, &mammut_mode);
 	
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
