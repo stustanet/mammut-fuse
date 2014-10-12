@@ -107,12 +107,9 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 
 	printf("path: %s\n", path);
 	strcpy(fpath, MAMMUT_DATA.user_basepath);
-	token = strtok_r(my_path, "/", &saveptr);
 
-	if (!token)
-		goto fin;
-
-	do {
+	for (token = strtok_r(my_path, "/", &saveptr); token;
+	     token = strtok_r(NULL, "/", &saveptr)) {
 		printf("Token %s\n", token);
 		switch(*mode) {
 		case MODE_HOMEDIR:
@@ -150,9 +147,8 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 			break;
 		default: break;
 		}
-	} while ((token = strtok_r(NULL, "/", &saveptr)));
+	}
 
-fin:
 	printf("fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
 	return 0;
 }
