@@ -71,33 +71,23 @@ static int mammut_error(const char *str)
  * Search in raids for a RAID/SUBDIR/USERID and write RAID into fpath. 
  * This is used to determine on which raid a user is currently placed.
  */
-static int _mammut_locate_userdir (char fpath[PATH_MAX], const char *userid, const char *subdir)
+static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, const char *subdir)
 {
 	int ok = 0;
 	size_t i;
 
 	for (i = 0; i < mammut_data.raid_count; i++) {
-		strcpy(fpath, mammut_data.raids[i]);
-		strcat(fpath, "/");
-		strcat(fpath, subdir);
-		strcat(fpath, "/");
-		strcat(fpath, userid);
-
-		if (access(fpath, F_OK) != -1) {
-			ok = 1;
-			break;
+		if (sizeof(fpath) > snprintf(fpath, sizeof(fpath), "%s/%s/%s", mammut_data.raids[i], subdir, userid)
+			&& access(fpath, F_OK) != -1
+			&& sizeof(fpath) > snprintf(fpath, sizeof(fpath), "%s/", mammut_data.raids[i])) {
+			fprintf(stderr, "userid: %s, subdir %s fpath: %s\n", fpath, userid, subdir);
+			return 1;
 		}
 	}
 ///Locate xfs user filesystem
 
-	if (!ok){
-		printf("FAIIIIIILL\n");
-	} else {
-		strcpy(fpath, mammut_data.raids[i]);
-		strcat(fpath, "/");
-	}
-	printf("userid: %s, subdir %s fpath: %s\n", fpath, userid, subdir);
-	return ok;
+	fprintf(stderr, "FAIIIIIILL\n");
+	return 0;
 }
 
 /**
