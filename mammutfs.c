@@ -105,10 +105,13 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
 
 	*mode = MODE_HOMEDIR;
 	strcpy(fpath, mammut_data.user_basepath);
+
 	// Get first path element
-	token = strtok_r(my_path, "/", &saveptr);
-	if (!strcmp(token, "public")
+	if (!(token = strtok_r(my_path, "/", &saveptr))) {
+		return 0;
+	} else if (!strcmp(token, "public")
 	 || !strcmp(token, "private")
+	 || !strcmp(token, "backup")
 	 || !strcmp(token, "anonymous")) {
 		strcat(fpath, token);
 		*mode = MODE_PIPETHROUGH_RW;
@@ -124,8 +127,9 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
 	strcat(fpath, mammut_data.userid);
 
 	// Check second path element
-	token = strtok_r(NULL, "/", &saveptr);
-	if (*mode == MODE_LISTDIR_PUBLIC) {
+	if(!(token = strtok_r(NULL, "/", &saveptr))) {
+		return 0;
+	} if (*mode == MODE_LISTDIR_PUBLIC) {
 		*mode = MODE_PIPETHROUGH_RO;
 		_mammut_locate_userdir(fpath, token, "public");
 	} else if (*mode == MODE_LISTDIR_ANON) {
