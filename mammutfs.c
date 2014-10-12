@@ -105,45 +105,52 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 	char *saveptr;
 	char *other_id;
 
-	printf("path: %s\n", path); 
-	strcpy(fpath, MAMMUT_DATA.user_basepath); 
-
-	while (*mode != MODE_PIPETHROUGH_RW &&
-	       *mode != MODE_PIPETHROUGH_RO &&
-	       *mode != MODE_PIPETHROUGH_ANON &&
-	       (token = strtok_r(my_path, "/", &saveptr))) {
-		printf("Token %s\n", token);
-		switch(*mode) {
-			case MODE_HOMEDIR:
-				if (!strcmp(token, "public") || !strcmp(token, "private") ||
-					!strcmp(token, "anonymous")) {
-						strcat(fpath, token);
-					*mode = MODE_PIPETHROUGH_RW;
-				} else if (!strcmp(token, "list-anonymous")) {
-					*mode = MODE_LISTDIR_ANON;
-				} else if (!strcmp(token, "list-public")) {
-					*mode = MODE_LISTDIR_PUBLIC;
-				} else {
-					printf("Listing Root directory");
-					return EACCES;
-				}
-				break;
-			case MODE_LISTDIR_PUBLIC:
-				other_id = token;
-				*mode = MODE_PIPETHROUGH_RO;
-				_mammut_locate_userdir(fpath, other_id, "public");
-				break;
-			case MODE_LISTDIR_ANON:
-				///TODO Subdirecotory of anon: userid
-				other_id = token; ///TODO Locate other ID
-				*mode = MODE_PIPETHROUGH_ANON;
-				_mammut_locate_userdir(fpath, other_id, "anonymous");
-				break;
-			default: break;
+	printf("path: %s\n", path);
+	strcpy(fpath, MAMMUT_DATA.user_basepath);
+	token = strtok_r(my_path, "/", &saveptr);
+	if(token != NULL) {
+		do {
+			printf("Token %s\n", token);
+			switch(*mode) {
+				case MODE_HOMEDIR:
+					if (!strcmp(token, "public") || !strcmp(token, "private") ||
+						!strcmp(token, "anonymous")) {
+							strcat(fpath, token);
+						*mode = MODE_PIPETHROUGH_RW;
+					} else if (!strcmp(token, "list-anonymous")) {
+						*mode = MODE_LISTDIR_ANON;
+					} else if (!strcmp(token, "list-public")) {
+						*mode = MODE_LISTDIR_PUBLIC;
+					} else {
+						printf("Listing Root directory");
+						return EACCES;
+					}
+					strcat(fpath, "/");
+					strcat(fpath, MAMMUT_DATA.userid);
+					break;
+				case MODE_LISTDIR_PUBLIC:
+					other_id = token;
+					*mode = MODE_PIPETHROUGH_RO;
+					_mammut_locate_userdir(fpath, other_id, "public");
+					break;
+				case MODE_LISTDIR_ANON:
+					///TODO Subdirecotory of anon: userid
+					other_id = token; ///TODO Locate other ID
+					*mode = MODE_PIPETHROUGH_ANON;
+					_mammut_locate_userdir(fpath, other_id, "anonymous");
+					break;
+				case MODE_PIPETHROUGH_RO:
+				case MODE_PIPETHROUGH_RW:
+				case MODE_PIPETHROUGH_ANON:
+					strcat(fpath, "/");
+					strcat(fpath, token);
+					break;
+				default: break;
+			}
 		}
+		while ((token = strtok_r(NULL, "/", &saveptr)));
 	}
-	strcat(fpath, MAMMUT_DATA.userid);
-	printf("fPath: %s last token: %s\n", fpath, token);
+	printf("fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
 	return 0;
 }
 
@@ -164,7 +171,25 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 	char fpath[PATH_MAX];
 
 	enum MAMMUT_PATH_MODE mode;
-	mammut_fullpath(fpath, path, &mode);
+	if (mammut_fullpath(fpath, path, &mode) != 0) return EACCES;
+	if (mode == MODE_HOMEDIR)
+	{
+		printf("Getattr of homedir\n");
+		statbuf->st_dev = 0; 			//IGNORED Device
+		statbuf->st_ino = 999; 			//IGNORED inode number
+		statbuf->st_mode = S_IFDIR | 0755; 		//Protection
+		statbuf->st_nlink = 0; 			//Number of Hard links
+		statbuf->st_uid = geteuid(); 	//Group ID of owner
+		statbuf->st_gid = getegid(); 	//User ID of owner
+		statbuf->st_rdev = 1;
+		statbuf->st_size = 1;
+		statbuf->st_blksize = 1;		// IGNORED
+		statbuf->st_blocks = 1;
+		statbuf->st_atim.tv_sec = 1;	// Last Access
+		statbuf->st_mtim.tv_sec = 1; 	// Last Modification
+		statbuf->st_ctim.tv_sec = 1;	// Last Status change
+		return 0;
+	} else printf("Getattr of not homedir\n");
 
 	if ((retstat = lstat(fpath, statbuf)))
 		retstat = mammut_error("mammut_getattr lstat");
@@ -174,7 +199,7 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 
 	if (mode == MODE_PIPETHROUGH_ANON)
 		// Eliminate all User-IDs from the file
-		statbuf->st_uid = 1000; ///TODO which user?
+		statbuf->st_uid = 100; ///TODO which user?
 
 	if (S_ISREG(statbuf->st_mode))
 		statbuf->st_mode |= 0004;
@@ -816,6 +841,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 {
 	(void)path;
 	(void)offset;
+	(void)fi;
 
 	int retstat = 0;
 	char fPath [PATH_MAX];
@@ -824,7 +850,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 	//dp = (DIR *) (uintptr_t) fi->fh;
 
 	enum MAMMUT_PATH_MODE mode;
-	mammut_fullpath(fPath, path, &mode);
+	if (mammut_fullpath(fPath, path, &mode) != 0) return EACCES;
 
 	// Every directory contains at least two entries: . and ..  If my
 	// first call to the system readdir() returns NULL I've got an
@@ -848,9 +874,8 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 				DIR *dp = opendir(fPath);
 				struct dirent *de = readdir(dp);
 				do {
-					if (filler(buf, de->d_name, NULL, 0) != 0) {
+					if (filler(buf, de->d_name, NULL, 0) != 0)
 						return -ENOMEM;
-					}
 				} while ((de = readdir(dp)) != NULL);
 			}
 			break;
@@ -876,7 +901,8 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 					if(strncmp(dirent->d_name, ".", 1) == 0 || strncmp(dirent->d_name, "..", 2) == 0)
 						continue;
 
-					filler(buf, dirent->d_name, NULL, 0);
+					if (filler(buf, dirent->d_name, NULL, 0) != 0)
+						return -ENOMEM;
 				} while ((dirent = readdir(cur_raid)) != NULL);
 			}
 
@@ -975,20 +1001,30 @@ void mammut_destroy(void *userdata)
  */
 static int mammut_access(const char *path, int mask)
 {
-	int retstat = 0;
 	char fpath[PATH_MAX];
 
 	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
-	retstat = access(fpath, mask);
-
-	if (mode != MODE_PIPETHROUGH_RW)
-		mask &= ~W_OK;
-
-	if (retstat < 0)
-		return retstat;
-	return mask;
+	switch (mode) {
+		case MODE_HOMEDIR:
+		case MODE_LISTDIR_ANON:
+		case MODE_LISTDIR_PUBLIC:
+			if ((mask & W_OK) == W_OK ) return -1;
+			else return 0;
+			break;
+		case MODE_PIPETHROUGH_RO:
+		case MODE_PIPETHROUGH_ANON:
+			if ((mask & W_OK) == W_OK ) return -1;
+			return access(fpath, mask);
+			break;
+		case MODE_PIPETHROUGH_RW:
+			return access(fpath, mask);
+			break;
+		default:
+			return -1;
+	}
+	return -1;
 }
 
 /**
