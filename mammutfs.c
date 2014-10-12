@@ -99,54 +99,51 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
 static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_path_mode* mode)
 {
 	//strukutur pfad public/private.../: ./public → /"raid"/public/USERID/
-	*mode = MODE_HOMEDIR;
 	char *my_path = strdup(path);
 	char *token;
 	char *saveptr;
-	char *other_id;
 
+	*mode = MODE_HOMEDIR;
 	strcpy(fpath, mammut_data.user_basepath);
-	for (token = strtok_r(my_path, "/", &saveptr); token;
-	     token = strtok_r(NULL, "/", &saveptr)) {
-		printf("Token %s\n", token);
-		switch(*mode) {
-		case MODE_HOMEDIR:
-			if (!strcmp(token, "public")
-					|| !strcmp(token, "private")
-					|| !strcmp(token, "anonymous")) {
-				strcat(fpath, token);
-				*mode = MODE_PIPETHROUGH_RW;
-			} else if (!strcmp(token, "list-anonymous")) {
-				*mode = MODE_LISTDIR_ANON;
-			} else if (!strcmp(token, "list-public")) {
-				*mode = MODE_LISTDIR_PUBLIC;
-			} else {
-				printf("Listing Root directory");
-				return -EPERM;
-			}
-			strcat(fpath, "/");
-			strcat(fpath, mammut_data.userid);
-			break;
-		case MODE_LISTDIR_PUBLIC:
-			other_id = token;
-			*mode = MODE_PIPETHROUGH_RO;
-			_mammut_locate_userdir(fpath, other_id, "public");
-			break;
-		case MODE_LISTDIR_ANON:
-			///TODO Subdirecotory of anon: userid
-			other_id = token; ///TODO Locate other ID
-			*mode = MODE_PIPETHROUGH_ANON;
-			_mammut_locate_userdir(fpath, other_id, "anonymous");
-			break;
-		case MODE_PIPETHROUGH_RO:
-		case MODE_PIPETHROUGH_RW:
-		case MODE_PIPETHROUGH_ANON:
+	// Get first path element
+	token = strtok_r(my_path, "/", &saveptr);
+	if (!strcmp(token, "public")
+	 || !strcmp(token, "private")
+	 || !strcmp(token, "anonymous")) {
+		strcat(fpath, token);
+		*mode = MODE_PIPETHROUGH_RW;
+	} else if (!strcmp(token, "list-anonymous")) {
+		*mode = MODE_LISTDIR_ANON;
+	} else if (!strcmp(token, "list-public")) {
+		*mode = MODE_LISTDIR_PUBLIC;
+	} else {
+		printf("Listing Root directory");
+		return EPERM;
+	}
+	strcat(fpath, "/");
+	strcat(fpath, mammut_data.userid);
+
+	// Check second path element
+	token = strtok_r(NULL, "/", &saveptr);
+	if (*mode == MODE_LISTDIR_PUBLIC) {
+		*mode = MODE_PIPETHROUGH_RO;
+		_mammut_locate_userdir(fpath, token, "public");
+	} else if (*mode == MODE_LISTDIR_ANON) {
+		///TODO Subdirecotory of anon: userid
+		///TODO Locate other ID
+		*mode = MODE_PIPETHROUGH_ANON;
+		_mammut_locate_userdir(fpath, token, "anonymous");
+	}
+
+	do {
+		if (*mode == MODE_PIPETHROUGH_RO
+		 || *mode == MODE_PIPETHROUGH_RW
+		 || *mode == MODE_PIPETHROUGH_ANON) {
 			strcat(fpath, "/");
 			strcat(fpath, token);
-			break;
-		default: break;
 		}
-	}
+	} while((token = strtok_r(NULL, "/", &saveptr)));
+
 	printf("mammut_fullpath: fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
 	return 0;
 }
