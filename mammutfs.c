@@ -68,7 +68,7 @@ static int mammut_error(const char *str)
 }
 
 /**
- * Search in raids for a RAID/SUBDIR/USERID and write RAID into fpath. 
+ * Search in raids for a RAID/SUBDIR/USERID and write RAID into fpath.
  * This is used to determine on which raid a user is currently placed.
  */
 static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, const char *subdir)
@@ -85,7 +85,7 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
 	}
 ///Locate xfs user filesystem
 
-	fprintf(stderr, "FAIIIIIILL\n");
+	fprintf(stderr, "FAIIIIIILL userid: %s, subdir %s last check: %s\n", userid, subdir, fpath);
 	return 0;
 }
 
@@ -133,7 +133,7 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
 		*mode = MODE_PIPETHROUGH_RO;
 		_mammut_locate_userdir(fpath, token, "public");
 		strcat(fpath, "/public");
-		printf("Listing public : %s token %s\n", fpath, token); 
+		printf("Listing public : %s token %s\n", fpath, token);
 	} else if (*mode == MODE_LISTDIR_ANON) {
 		///TODO Subdirecotory of anon: userid
 		///TODO Locate other ID
@@ -246,7 +246,7 @@ static int mammut_readlink(const char *path, char *link, size_t size)
 	(void)link;
 	(void)size;
 
-	mammut_error("Not Implemented Yet");
+	mammut_error("Not Implemented Yet\n");
 	return ENOENT;
 /*
 	int retstat = 0;
@@ -278,7 +278,7 @@ static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 	(void)path;
 	(void)mode;
 	(void)dev;
-
+	printf("mknod\n");
 	return -EPERM;
 	/*
 	int retstat = 0;
@@ -512,23 +512,24 @@ static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 /** Change the size of a file */
 static int mammut_truncate(const char *path, off_t newsize)
 {
-	//TODO Idee: Limit newsize to 10G?
+	//TODO Idee: Limit newsize to 128G?
 
-	(void)path;
-	(void)newsize;
-	return -EPERM;
-	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	mammut_fullpath(fpath, path);
-
+	enum mammut_path_mode mode;
+	printf("truncate src path : %s\n", path);
+	if (mammut_fullpath(fpath, path, &mode))
+		return -EPERM;
+	printf("truncate mode: %i\n", mode);
+	if (mode != MODE_PIPETHROUGH_RW)
+		return -EPERM;
+	printf("Truncating\n");
 	retstat = truncate(fpath, newsize);
 	if (retstat < 0)
 		mammut_error("mammut_truncate truncate");
 
 	return retstat;
-	*/
 }
 
 /** Change the access and/or modification times of a file */
@@ -569,15 +570,18 @@ static int mammut_open(const char *path, struct fuse_file_info *fi)
 	enum mammut_path_mode mode;
 
 	mammut_fullpath(fpath, path, &mode);
-
-	if (mode != MODE_PIPETHROUGH_RW && (fi->flags != O_RDONLY))
+	printf("Mode: %i, flags: %i\n", mode, fi->flags);
+	if (mode != MODE_PIPETHROUGH_RW && (fi->flags & O_ACCMODE) != O_RDONLY)
+	{
+		printf("\033[31mOpen Denied throught RW & RDONLY\033[0m\n");
 		return -EPERM;
-
+	}
 	fd = open(fpath, fi->flags);
 	if (fd < 0)
 		retstat = mammut_error("mammut_open open");
-
 	fi->fh = fd;
+
+	printf("Opening file %s ret: %i fd %i\n", fpath, retstat, fd);
 
 	return retstat;
 }
