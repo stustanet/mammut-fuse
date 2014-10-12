@@ -429,7 +429,6 @@ static int mammut_chmod(const char *path, mode_t mode)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
 	enum MAMMUT_PATH_MODE mammut_mode;
 	mammut_fullpath(fpath, path, &mammut_mode);
 
@@ -446,7 +445,6 @@ static int mammut_chmod(const char *path, mode_t mode)
 /** Change the owner and group of a file */
 static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 {
-
 	(void)path;
 	(void)uid;
 	(void)gid;
@@ -1186,16 +1184,14 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-
 	// Perform some sanity checking on the command line:  make sure
 	//
 	// there are enough arguments, and that neither of the last two
 	// start with a hyphen (this will break if you actually have a
 	// rootpoint or mountpoint whose name starts with a hyphen, but so
 	// will a zillion other programs)
-	if ((argc < 5))
+	if (argc < 5)
 		mammut_usage();
-
 
 	int raid_offset;
 	for (raid_offset = 3; raid_offset < argc; ++raid_offset)
@@ -1209,7 +1205,7 @@ int main(int argc, char *argv[])
 
 	MAMMUT_DATA.userid = argv[raid_offset - 1];
 	MAMMUT_DATA.raid_count = argc - raid_offset - 1;
- 	if (!(MAMMUT_DATA.raids = (char**)malloc(MAMMUT_DATA.raid_count * sizeof(char*))))
+	if (!(MAMMUT_DATA.raids = (char**)malloc(MAMMUT_DATA.raid_count * sizeof(char*))))
 		exit(ENOMEM);
 
 	for (int i = raid_offset + 1, o = 0; i < argc; ++i, ++o) {
