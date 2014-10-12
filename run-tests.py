@@ -36,14 +36,12 @@ for raid in range(0,raids):
         path_user = path_raid + "/" + user
         os.mkdir(path_user)
         for directory in directories:
-	    path_dir = path_user + "/" + directory
-	    os.mkdir(path_dir)
-	    if directory == "anonymous":
-		path_dir = path_dir + "/anon_test"
-		os.mkdir(path_dir)
+            path_dir = path_user + "/" + directory
+            os.mkdir(path_dir)
+            if directory == "anonymous":
+                path_dir = path_dir + "/anon_test"
+                os.mkdir(path_dir)
 
             for f in files:
                 temp_file = os.open(path_dir + "/" + f + "_" + user, os.O_CREAT | os.O_WRONLY)
                 os.write(temp_file, payload)
-
-
