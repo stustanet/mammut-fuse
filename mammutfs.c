@@ -108,48 +108,51 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 	printf("path: %s\n", path);
 	strcpy(fpath, MAMMUT_DATA.user_basepath);
 	token = strtok_r(my_path, "/", &saveptr);
-	if(token != NULL) {
-		do {
-			printf("Token %s\n", token);
-			switch(*mode) {
-				case MODE_HOMEDIR:
-					if (!strcmp(token, "public") || !strcmp(token, "private") ||
-						!strcmp(token, "anonymous")) {
-							strcat(fpath, token);
-						*mode = MODE_PIPETHROUGH_RW;
-					} else if (!strcmp(token, "list-anonymous")) {
-						*mode = MODE_LISTDIR_ANON;
-					} else if (!strcmp(token, "list-public")) {
-						*mode = MODE_LISTDIR_PUBLIC;
-					} else {
-						printf("Listing Root directory");
-						return EACCES;
-					}
-					strcat(fpath, "/");
-					strcat(fpath, MAMMUT_DATA.userid);
-					break;
-				case MODE_LISTDIR_PUBLIC:
-					other_id = token;
-					*mode = MODE_PIPETHROUGH_RO;
-					_mammut_locate_userdir(fpath, other_id, "public");
-					break;
-				case MODE_LISTDIR_ANON:
-					///TODO Subdirecotory of anon: userid
-					other_id = token; ///TODO Locate other ID
-					*mode = MODE_PIPETHROUGH_ANON;
-					_mammut_locate_userdir(fpath, other_id, "anonymous");
-					break;
-				case MODE_PIPETHROUGH_RO:
-				case MODE_PIPETHROUGH_RW:
-				case MODE_PIPETHROUGH_ANON:
-					strcat(fpath, "/");
-					strcat(fpath, token);
-					break;
-				default: break;
+
+	if (!token)
+		goto fin;
+
+	do {
+		printf("Token %s\n", token);
+		switch(*mode) {
+		case MODE_HOMEDIR:
+			if (!strcmp(token, "public") || !strcmp(token, "private") ||
+				!strcmp(token, "anonymous")) {
+				strcat(fpath, token);
+				*mode = MODE_PIPETHROUGH_RW;
+			} else if (!strcmp(token, "list-anonymous")) {
+				*mode = MODE_LISTDIR_ANON;
+			} else if (!strcmp(token, "list-public")) {
+				*mode = MODE_LISTDIR_PUBLIC;
+			} else {
+				printf("Listing Root directory");
+				return EACCES;
 			}
+			strcat(fpath, "/");
+			strcat(fpath, MAMMUT_DATA.userid);
+			break;
+		case MODE_LISTDIR_PUBLIC:
+			other_id = token;
+			*mode = MODE_PIPETHROUGH_RO;
+			_mammut_locate_userdir(fpath, other_id, "public");
+			break;
+		case MODE_LISTDIR_ANON:
+			///TODO Subdirecotory of anon: userid
+			other_id = token; ///TODO Locate other ID
+			*mode = MODE_PIPETHROUGH_ANON;
+			_mammut_locate_userdir(fpath, other_id, "anonymous");
+			break;
+		case MODE_PIPETHROUGH_RO:
+		case MODE_PIPETHROUGH_RW:
+		case MODE_PIPETHROUGH_ANON:
+			strcat(fpath, "/");
+			strcat(fpath, token);
+			break;
+		default: break;
 		}
-		while ((token = strtok_r(NULL, "/", &saveptr)));
-	}
+	} while ((token = strtok_r(NULL, "/", &saveptr)));
+
+fin:
 	printf("fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
 	return 0;
 }
@@ -172,24 +175,25 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 
 	enum MAMMUT_PATH_MODE mode;
 	if (mammut_fullpath(fpath, path, &mode) != 0) return EACCES;
-	if (mode == MODE_HOMEDIR)
-	{
+	if (mode == MODE_HOMEDIR) {
 		printf("Getattr of homedir\n");
-		statbuf->st_dev = 0; 			//IGNORED Device
-		statbuf->st_ino = 999; 			//IGNORED inode number
-		statbuf->st_mode = S_IFDIR | 0755; 		//Protection
-		statbuf->st_nlink = 0; 			//Number of Hard links
-		statbuf->st_uid = geteuid(); 	//Group ID of owner
-		statbuf->st_gid = getegid(); 	//User ID of owner
+		statbuf->st_dev = 0;               // IGNORED Device
+		statbuf->st_ino = 999;             // IGNORED inode number
+		statbuf->st_mode = S_IFDIR | 0755; // Protection
+		statbuf->st_nlink = 0;             // Number of Hard links
+		statbuf->st_uid = geteuid();       // Group ID of owner
+		statbuf->st_gid = getegid();       // User ID of owner
 		statbuf->st_rdev = 1;
 		statbuf->st_size = 1;
-		statbuf->st_blksize = 1;		// IGNORED
+		statbuf->st_blksize = 1;           // IGNORED
 		statbuf->st_blocks = 1;
-		statbuf->st_atim.tv_sec = 1;	// Last Access
-		statbuf->st_mtim.tv_sec = 1; 	// Last Modification
-		statbuf->st_ctim.tv_sec = 1;	// Last Status change
+		statbuf->st_atim.tv_sec = 1;       // Last Access
+		statbuf->st_mtim.tv_sec = 1;       // Last Modification
+		statbuf->st_ctim.tv_sec = 1;       // Last Status change
 		return 0;
-	} else printf("Getattr of not homedir\n");
+	} else {
+		printf("Getattr of not homedir\n");
+	}
 
 	if ((retstat = lstat(fpath, statbuf)))
 		retstat = mammut_error("mammut_getattr lstat");
