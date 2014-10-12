@@ -105,16 +105,16 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 	char *saveptr;
 	char *other_id;
 
-	printf("path: %s\n", path);
 	strcpy(fpath, MAMMUT_DATA.user_basepath);
 	token = strtok_r(my_path, "/", &saveptr);
 	if(token != NULL) {
 		do {
-			printf("Token %s\n", token);
 			switch(*mode) {
 				case MODE_HOMEDIR:
-					if (!strcmp(token, "public") || !strcmp(token, "private") ||
-						!strcmp(token, "anonymous")) {
+					if (!strcmp(token, "public")
+							|| !strcmp(token, "private")
+							|| !strcmp(token, "backup")
+							|| !strcmp(token, "anonymous")) {
 							strcat(fpath, token);
 						*mode = MODE_PIPETHROUGH_RW;
 					} else if (!strcmp(token, "list-anonymous")) {
@@ -122,8 +122,8 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 					} else if (!strcmp(token, "list-public")) {
 						*mode = MODE_LISTDIR_PUBLIC;
 					} else {
-						printf("Listing Root directory");
-						return EACCES;
+						fpath[0] = 0;
+						return EPERM;
 					}
 					strcat(fpath, "/");
 					strcat(fpath, MAMMUT_DATA.userid);
@@ -132,12 +132,16 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 					other_id = token;
 					*mode = MODE_PIPETHROUGH_RO;
 					_mammut_locate_userdir(fpath, other_id, "public");
+					strcat(fpath, "/");
+					strcat(fpath, other_id);
 					break;
 				case MODE_LISTDIR_ANON:
 					///TODO Subdirecotory of anon: userid
 					other_id = token; ///TODO Locate other ID
 					*mode = MODE_PIPETHROUGH_ANON;
 					_mammut_locate_userdir(fpath, other_id, "anonymous");
+					strcat(fpath, "/");
+					strcat(fpath, other_id);
 					break;
 				case MODE_PIPETHROUGH_RO:
 				case MODE_PIPETHROUGH_RW:
@@ -150,8 +154,23 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum MAMMUT_P
 		}
 		while ((token = strtok_r(NULL, "/", &saveptr)));
 	}
-	printf("fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
+	printf("mammut_fullpath: fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
 	return 0;
+}
+
+static int _mammut_parent_writable ( const char *path ) {
+	char modified_path[PATH_MAX];
+	char fpath[PATH_MAX];
+	strcpy(modified_path, path);
+	char *ptr = strrchr(modified_path, '/');
+	if (ptr != NULL)
+		*ptr = '\0';
+	else return 0;
+	enum MAMMUT_PATH_MODE mode;
+	mammut_fullpath(fpath, modified_path, &mode);
+	if (mode != MODE_PIPETHROUGH_RW) return 0;
+
+	return 1;
 }
 
 ///////////////////////////////////////////////////////////
@@ -171,12 +190,11 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 	char fpath[PATH_MAX];
 
 	enum MAMMUT_PATH_MODE mode;
-	if (mammut_fullpath(fpath, path, &mode) != 0) return EACCES;
+	if (mammut_fullpath(fpath, path, &mode) != 0) return EPERM;
 	if (mode == MODE_HOMEDIR)
 	{
-		printf("Getattr of homedir\n");
 		statbuf->st_dev = 0; 			//IGNORED Device
-		statbuf->st_ino = 999; 			//IGNORED inode number
+		statbuf->st_ino = 0; 			//IGNORED inode number
 		statbuf->st_mode = S_IFDIR | 0755; 		//Protection
 		statbuf->st_nlink = 0; 			//Number of Hard links
 		statbuf->st_uid = geteuid(); 	//Group ID of owner
@@ -189,7 +207,7 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 		statbuf->st_mtim.tv_sec = 1; 	// Last Modification
 		statbuf->st_ctim.tv_sec = 1;	// Last Status change
 		return 0;
-	} else printf("Getattr of not homedir\n");
+	}
 
 	if ((retstat = lstat(fpath, statbuf)))
 		retstat = mammut_error("mammut_getattr lstat");
@@ -260,7 +278,7 @@ static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 	(void)mode;
 	(void)dev;
 
-	return EACCES; 
+	return EPERM; 
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -304,8 +322,11 @@ static int mammut_mkdir(const char *path, mode_t mode)
 	enum MAMMUT_PATH_MODE mammut_mode;
 	mammut_fullpath(fpath, path, &mammut_mode);
 
+	if (!_mammut_parent_writable(path))
+		return EPERM;
+
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
-		return EACCES; 
+		return EPERM;
 
 	retstat = mkdir(fpath, mode);
 	if (retstat < 0)
@@ -324,7 +345,7 @@ static int mammut_unlink(const char *path)
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	retstat = unlink(fpath);
 	if (retstat < 0)
@@ -340,10 +361,13 @@ static int mammut_rmdir(const char *path)
 	char fpath[PATH_MAX];
 
 	enum MAMMUT_PATH_MODE mode;
-	mammut_fullpath(fpath, path, &mode);
 
+	if (!_mammut_parent_writable(path))
+		return EPERM;
+
+	mammut_fullpath(fpath, path, &mode);
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	retstat = rmdir(fpath);
 	if (retstat < 0)
@@ -366,7 +390,7 @@ static int mammut_symlink(const char *path, const char *link)
 	mammut_fullpath(flink, link, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	retstat = symlink(path, flink);
 	if (retstat < 0)
@@ -384,15 +408,18 @@ static int mammut_rename(const char *path, const char *newpath)
 	char fnewpath[PATH_MAX];
 
 	enum MAMMUT_PATH_MODE mode;
-	mammut_fullpath(fpath, path, &mode);
 
+	if (!_mammut_parent_writable(path))
+		return EPERM;
+
+	mammut_fullpath(fpath, path, &mode);
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	mammut_fullpath(fnewpath, newpath, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	retstat = rename(fpath, fnewpath);
 	if (retstat < 0)
@@ -404,14 +431,14 @@ static int mammut_rename(const char *path, const char *newpath)
 /** Create a hard link to a file */
 static int mammut_link(const char *path, const char *newpath)
 {
-	(void)path; 
-	(void)newpath; 
+	(void)path;
+	(void)newpath;
 
-	return EACCES; 
+	return EACCES;
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX], fnewpath[PATH_MAX];
-	
+
 	meammut_fullpath(fpath, path, &mode);
 	mammut_fullpath(fnewpath, newpath);
 
@@ -428,12 +455,15 @@ static int mammut_chmod(const char *path, mode_t mode)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	enum MAMMUT_PATH_MODE mammut_mode; 
+
+	enum MAMMUT_PATH_MODE mammut_mode;
 	mammut_fullpath(fpath, path, &mammut_mode);
 
+	if (!_mammut_parent_writable(path))
+		return EPERM;
+
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	retstat = chmod(fpath, mode);
 	if (retstat < 0)
@@ -446,15 +476,15 @@ static int mammut_chmod(const char *path, mode_t mode)
 static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 {
 
-	(void)path; 
+	(void)path;
 	(void)uid;
-	(void)gid; 
-	return EACCES; 
+	(void)gid;
+	return EPERM;
 
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
+
 	mammut_fullpath(fpath, path);
 
 	retstat = chown(fpath, uid, gid);
@@ -468,11 +498,11 @@ static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 /** Change the size of a file */
 static int mammut_truncate(const char *path, off_t newsize)
 {
-	//TODO Idee: Limit newsize to 10G? 
+	//TODO Idee: Limit newsize to 10G?
 
-	(void)path; 
-	(void)newsize; 
-	return EACCES; 
+	(void)path;
+	(void)newsize;
+	return EPERM;
 	/*
 	int retstat = 0;
 	char fpath[PATH_MAX];
@@ -494,11 +524,11 @@ static int mammut_utime(const char *path, struct utimbuf *ubuf)
 	int retstat = 0;
 	char fpath[PATH_MAX];
 
-	enum MAMMUT_PATH_MODE mode; 
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES; 
+		return EPERM;
 
 	retstat = utime(fpath, ubuf);
 	if (retstat < 0)
@@ -527,7 +557,7 @@ static int mammut_open(const char *path, struct fuse_file_info *fi)
 	mammut_fullpath(fpath, path, &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW && (fi->flags != O_RDONLY))
-		return EACCES;
+		return EPERM;
 
 	fd = open(fpath, fi->flags);
 	if (fd < 0)
@@ -599,8 +629,8 @@ static int mammut_statfs(const char *path, struct statvfs *statv)
 {
 	int retstat = 0;
 	char fpath[PATH_MAX];
-	
-	enum MAMMUT_PATH_MODE mode; 
+
+	enum MAMMUT_PATH_MODE mode;
 	mammut_fullpath(fpath, path, &mode);
 
 	// get stats for underlying filesystem
@@ -709,7 +739,7 @@ static int mammut_setxattr(const char *path, const char *name, const char *value
 	mammut_fullpath(fpath, path &mode);
 
 	if (mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
+		return EPERM;
 
 	retstat = lsetxattr(fpath, name, value, size, flags);
 	if (retstat < 0)
@@ -850,7 +880,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 	//dp = (DIR *) (uintptr_t) fi->fh;
 
 	enum MAMMUT_PATH_MODE mode;
-	if (mammut_fullpath(fPath, path, &mode) != 0) return EACCES;
+	if (mammut_fullpath(fPath, path, &mode) != 0) return EPERM;
 
 	// Every directory contains at least two entries: . and ..  If my
 	// first call to the system readdir() returns NULL I've got an
@@ -895,8 +925,9 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 			for (size_t i = 0; i < MAMMUT_DATA.raid_count; ++i)  {
 				DIR *cur_raid;
 				cur_raid = opendir(MAMMUT_DATA.raids[i]);
-				struct dirent *dirent;
-				do {
+				struct dirent *dirent = readdir(cur_raid);
+				if (dirent == NULL) continue;
+				do { // TODO: WTF? initialize dirent before using it!!! Do it
 					// eat the . and .. of the raid-dirs
 					if(strncmp(dirent->d_name, ".", 1) == 0 || strncmp(dirent->d_name, "..", 2) == 0)
 						continue;
@@ -910,9 +941,6 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 		case MODE_LISTDIR_ANON:
 			break; //TODO Heftik Grass
 	}
-
-
-
 
 	return retstat;
 }
@@ -1047,10 +1075,10 @@ static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *f
 
 	enum MAMMUT_PATH_MODE mammut_mode; 
 	mammut_fullpath(fpath, path, &mammut_mode);
-	
+
 	if (mammut_mode != MODE_PIPETHROUGH_RW)
-		return EACCES;
-	
+		return EPERM;
+
 
 	fd = creat(fpath, mode);
 	if (fd < 0)
