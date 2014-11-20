@@ -38,10 +38,13 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <linux/limits.h>
+#include <libconfig.h>
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
 #endif
+
+config_t cfg;
 
 static struct {
 	char *userid;
@@ -473,7 +476,7 @@ static int mammut_chmod(const char *path, mode_t mode)
 	enum mammut_path_mode mammut_mode;
 
 	// If the Parent is not MODE_RW then this is a second-level directory, of which
-	// the mod must not be changed. 
+	// the mod must not be changed.
 	if (!_mammut_parent_writable(path))
 		return -EPERM;
 	if (mammut_fullpath(fpath, path, &mammut_mode))
@@ -813,7 +816,7 @@ static int mammut_removexattr(const char *path, const char *name)
 
 	enum mammut_path_mode mode;
 	if (mammut_fullpath(fpath, path, &mode))
-		return -EPERM; 
+		return -EPERM;
 
 	if(mode != MODE_PIPETHROUGH_RW)
 		return ENOTSUP;
@@ -1061,7 +1064,7 @@ static int mammut_access(const char *path, int mask)
 
 	enum mammut_path_mode mode;
 	if (mammut_fullpath(fpath, path, &mode))
-		return -1; 
+		return -1;
 
 	switch (mode) {
 		case MODE_HOMEDIR:
@@ -1218,7 +1221,7 @@ struct fuse_operations mammut_oper = {
 
 void mammut_usage()
 {
-	fprintf(stderr, "usage:  mammutfs fuseopts mountpoint userid -- raids\n");
+	fprintf(stderr, "usage:  mammutfs fuseopts mountpoint userid\n");
 	abort();
 }
 
@@ -1242,45 +1245,50 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Running MAMMUTFS as root opens unnacceptable security holes\n");
 		return 1;
 	}
-
-	// Perform some sanity checking on the command line:  make sure
 	//
-	// there are enough arguments, and that neither of the last two
-	// start with a hyphen (this will break if you actually have a
-	// rootpoint or mountpoint whose name starts with a hyphen, but so
-	// will a zillion other programs)
-	if (argc < 5)
+	// Perform some sanity checking on the command line:  make sure
+	// there are enough arguments
+	if (argc < 4)
 		mammut_usage();
 
-	int raid_offset;
-	for (raid_offset = 3; raid_offset < argc; ++raid_offset)
-		if (!strcmp(argv[raid_offset], "--")) break;
+	const char* mammutfs_config_file = argv[argc-2];
 
-	///raid_offset is now pointing to argv[raid_offset] == "--"
-	if (argc == raid_offset) {
-		mammut_usage();
-		return -1;
+	// read config file
+	config_init(&cfg);
+	if (!config_read_file(&cfg, mammutfs_config_file)) {
+		printf("%s:%d - %s\n",
+				config_error_file(&cfg),
+				config_error_line(&cfg),
+				config_error_text(&cfg));
+		config_destroy(&cfg);
+		return(EXIT_FAILURE);
 	}
 
-	mammut_data.userid = argv[raid_offset - 1];
-	mammut_data.raid_count = argc - raid_offset - 1;
-	if (!(mammut_data.raids = (char**)malloc(mammut_data.raid_count * sizeof(char*))))
-		exit(ENOMEM);
+	const config_setting_t *raids;
+	raids = config_lookup(&cfg, "raids");
+	mammut_data.raid_count = config_setting_length(raids);
+	mammut_data.raids = (char**)malloc(mammut_data.raid_count * sizeof(char*));
 
-	for (int i = raid_offset + 1, o = 0; i < argc; ++i, ++o) {
-		mammut_data.raids[o] = strdup(argv[i]);
+	printf("used raids:\n");
+	for(unsigned int i = 0; i < mammut_data.raid_count; i++)
+	{
+		const char *raid = config_setting_get_string_elem(raids, i); // this string is freed when the config is destroyed
+		mammut_data.raids[i] = strdup(raid);
+		printf("\t%s\n",mammut_data.raids[i]);
 	}
+	config_destroy(&cfg);
+
+
+	mammut_data.userid = argv[argc-1];
+	printf("userid: %s", mammut_data.userid);
+
 	char fPath[PATH_MAX];
 	_mammut_locate_userdir(fPath, mammut_data.userid, "public");
 	mammut_data.user_basepath = strdup(fPath);
-	// internal data
 
-	//argc -= mammut_data.raid_count;
-	argc = raid_offset - 1;
-	printf("Raid Offset :%i\n", raid_offset);
 	// turn over control to fuse
 	fprintf(stderr, "about to call fuse_main\n");
-	fuse_stat = fuse_main(argc, argv, &mammut_oper, &mammut_data);
+	fuse_stat = fuse_main(argc-2, argv, &mammut_oper, &mammut_data);
 	fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
 	return fuse_stat;
