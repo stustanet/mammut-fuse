@@ -39,6 +39,8 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 #include <libconfig.h>
+#include <sys/types.h> // stat()
+#include <sys/stat.h>  // stat()
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
@@ -70,6 +72,60 @@ static int mammut_error(const char *str)
 	return ret;
 }
 
+const char* mapping_file_path;
+
+time_t mapping_last_modification_time;
+
+struct anon_mapping_st {
+    char* mapped;
+    char* original;
+} *anon_mappings;
+
+int anon_mappings_count = 0;
+
+// TODO: look at the return values (1/0) of all functions and try to be consistent...
+
+/**
+ * reads the anonymous mapping into the datastructure mapping
+ * only read the file if there was a change
+ */
+static int _mammut_read_anonymous_mapping()
+{
+    struct stat mapping_stat;
+    if(stat(mapping_file_path, &mapping_stat) == 0)
+    {
+        if(mapping_stat.st_mtime != mapping_last_modification_time) // we have to reread
+        {
+            // free anon_mappings before reallocating...
+            for(int i = 0; i < anon_mappings_count; i++)
+            {
+                free(anon_mappings[i].mapped);
+                free(anon_mappings[i].original);
+            }
+            free(anon_mappings);
+
+            FILE *mapping = fopen(mapping_file_path, "r");
+
+            int number_of_mappings = 0;
+            fscanf(mapping, "%i ", &number_of_mappings);
+            anon_mappings_count = number_of_mappings;
+            anon_mappings = (struct anon_mapping_st*)malloc(sizeof(struct anon_mapping_st)*number_of_mappings);
+            char *mapped, *original;
+            // TODO: sanity check if the count is correct, etc.
+            for (int i = 0; i < number_of_mappings; i++) {
+               fscanf(mapping, "%ms %ms ", &mapped, &original); // whitespace at end eats newline and spaces
+               anon_mappings[i].mapped = mapped;
+               anon_mappings[i].original = original;
+               printf("map: %s → %s\n", mapped, original);
+            }
+            fclose(mapping);
+
+            mapping_last_modification_time = mapping_stat.st_mtime;
+        }
+    }
+    return 0;
+}
+
 /**
  * Search in raids for a RAID/SUBDIR/USERID and write RAID into fpath.
  * This is used to determine on which raid a user is currently placed.
@@ -93,6 +149,23 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
 }
 
 /**
+ * Returns the original anonymous directory in fpath. anon_dir contains the mapped directory name
+ */
+static int _mammut_locate_anondir(char fpath[PATH_MAX], const char *anon_dir)
+{
+    // lookup mapping from anon_dir to the original directory
+    for(size_t i = 0; i < anon_mappings_count; i++)
+    {
+        if(strncmp(anon_mappings[i].mapped, anon_dir, strlen(anon_mappings[i].mapped)) == 0)
+        {
+            strncpy(fpath,anon_mappings[i].original,strlen(anon_mappings[i].original)+1);
+            return 1; // TODO: why 1?
+        }
+    }
+    return 0;
+}
+
+/**
  * Translate the Filesystem-Address (/public/XX, /private, ...) to one of the following:
  *  * Home-Directory: /
  *  * First order subdirectories: public, private, anonymous, list-anonymous, list-public, backup
@@ -101,6 +174,7 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
  */
 static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_path_mode* mode)
 {
+    // TODO: integrate translation of anonymouse path to original anon path
 	//strukutur pfad public/private.../: ./public → /"raid"/public/USERID/
 	char *my_path = strdup(path);
 	char *token;
@@ -138,21 +212,25 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
 		strcat(fpath, "/public");
 		printf("Listing public : %s token %s\n", fpath, token);
 	} else if (*mode == MODE_LISTDIR_ANON) {
-		///TODO Subdirecotory of anon: userid
-		///TODO Locate other ID
 		*mode = MODE_PIPETHROUGH_ANON;
-		_mammut_locate_userdir(fpath, token, "anonymous");
-		strcat(fpath, "/anonymous");
+        _mammut_read_anonymous_mapping(); // this is a caching function
+		_mammut_locate_anondir(fpath, token);
+		/* strcat(fpath, "/anonymous"); */
 	}
+    if(*mode == MODE_PIPETHROUGH_RO || *mode == MODE_PIPETHROUGH_RW)
+    {
+			strcat(fpath, "/");
+			strcat(fpath, token);
+    }
 
-	do {
+	while((token = strtok_r(NULL, "/", &saveptr))){
 		if (*mode == MODE_PIPETHROUGH_RO
 		 || *mode == MODE_PIPETHROUGH_RW
 		 || *mode == MODE_PIPETHROUGH_ANON) {
 			strcat(fpath, "/");
 			strcat(fpath, token);
 		}
-	} while((token = strtok_r(NULL, "/", &saveptr)));
+	};
 
 	printf("mammut_fullpath: fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
 	return 0;
@@ -870,6 +948,7 @@ static int mammut_opendir(const char *path, struct fuse_file_info *fi)
 	return retstat;
 }
 
+
 /** Read directory
  *
  * This supersedes the old getdir() interface.  New applications
@@ -970,7 +1049,15 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
 
 			break;
 		case MODE_LISTDIR_ANON:
-			break; //TODO Heftik Grass
+            _mammut_read_anonymous_mapping(); // this method is efficient and only reads on modification
+            printf("\n\nLIST ANON %s\n\n", fPath);
+            filler(buf, ".", NULL, 0);
+            filler(buf, "..", NULL, 0);
+            for (size_t i = 0; i < anon_mappings_count; i++) {
+                if(filler(buf, anon_mappings[i].mapped, NULL, 0) != 0)
+                    return -ENOMEM;
+            }
+			break;
 	}
 
 	return retstat;
@@ -1228,6 +1315,8 @@ void mammut_usage()
 
 
 //mammutfs [fuseopts] mountpoint userid -- raid1 raid2 ...
+// TODO: less parameters, more config variables!
+// should be ./mammutfs userid /mnt/dir (userid could be read)
 int main(int argc, char *argv[])
 {
 	int fuse_stat;
