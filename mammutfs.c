@@ -1315,7 +1315,6 @@ void mammut_usage()
 
 
 //mammutfs [fuseopts] mountpoint userid -- raid1 raid2 ...
-// TODO: less parameters, more config variables!
 // should be ./mammutfs userid /mnt/dir (userid could be read)
 int main(int argc, char *argv[])
 {
@@ -1353,6 +1352,10 @@ int main(int argc, char *argv[])
 		return(EXIT_FAILURE);
 	}
 
+	const char* _CONFIG_ANON_MAPPING;
+	config_lookup_string(&cfg, "anon_mapping", &_CONFIG_ANON_MAPPING);
+	mapping_file_path = strdup(_CONFIG_ANON_MAPPING);
+	printf("Anonymous directory mapping file: %s", mapping_file_path);
 	const config_setting_t *raids;
 	raids = config_lookup(&cfg, "raids");
 	mammut_data.raid_count = config_setting_length(raids);
