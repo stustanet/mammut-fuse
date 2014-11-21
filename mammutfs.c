@@ -41,6 +41,7 @@
 #include <libconfig.h>
 #include <sys/types.h> // stat()
 #include <sys/stat.h>  // stat()
+#include <pwd.h>		// getpwdnam()
 
 #ifdef HAVE_SYS_XATTR_H
 #include <sys/xattr.h>
@@ -54,6 +55,11 @@ static struct {
 	size_t raid_count;
 	char *user_basepath;
 } mammut_data;
+
+static struct {
+	int anonymous_uid;
+	int anonymous_gid;
+} global_data;
 
 enum mammut_path_mode {
 	MODE_HOMEDIR,
@@ -296,8 +302,12 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 			break;
 	}
 	if (mode == MODE_PIPETHROUGH_ANON)
+	{
 		// Eliminate all User-IDs from the file
-		statbuf->st_uid = 100; ///TODO which user?
+		statbuf->st_uid = global_data.anonymous_uid;
+		statbuf->st_gid = global_data.anonymous_gid;
+
+	}
 
 	if (mode == MODE_PIPETHROUGH_RO || mode == MODE_PIPETHROUGH_ANON) {
 		if (S_ISREG(statbuf->st_mode))
@@ -1377,6 +1387,22 @@ int main(int argc, char *argv[])
 	char fPath[PATH_MAX];
 	_mammut_locate_userdir(fPath, mammut_data.userid, "public");
 	mammut_data.user_basepath = strdup(fPath);
+
+
+	// TODO: make this username configureable
+	struct passwd *passwd_info = getpwnam("nobody");
+	if(passwd_info == NULL)
+	{
+		printf("the nobody user could not be found...\n");
+		return -1;
+	}
+
+	global_data.anonymous_uid = passwd_info->pw_uid;
+	global_data.anonymous_gid = passwd_info->pw_gid;
+
+	printf("anonymous user id: %i\n", global_data.anonymous_uid);
+	printf("anonymous group id: %i\n", global_data.anonymous_gid);
+
 
 	// turn over control to fuse
 	fprintf(stderr, "about to call fuse_main\n");
