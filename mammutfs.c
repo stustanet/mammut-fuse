@@ -1367,13 +1367,13 @@ struct fuse_operations mammut_oper = {
 
 void mammut_usage()
 {
-    fprintf(stderr, "usage:  mammutfs fuseopts mountpoint userid\n");
+    fprintf(stderr, "usage:  mammutfs fuseopts mountpoint configfile userid\n");
     abort();
 }
 
 
 
-//mammutfs [fuseopts] mountpoint userid -- raid1 raid2 ...
+//mammutfs [fuseopts] mountpoint onfigfile userid
 // should be ./mammutfs userid /mnt/dir (userid could be read)
 int main(int argc, char *argv[])
 {
