@@ -158,7 +158,7 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
         if (PATH_MAX > snprintf(fpath, PATH_MAX, "%s/%s/%s", mammut_data.raids[i], subdir, userid)
             && access(fpath, F_OK) != -1
             && PATH_MAX > snprintf(fpath, PATH_MAX, "%s/", mammut_data.raids[i])) {
-            fprintf(stderr, "userid: %s, subdir %s fpath: %s\n", fpath, userid, subdir);
+            fprintf(stderr, "userid: %s, subdir %s fpath: %s\n", userid, subdir, fpath);
             return 0;
         }
     }
@@ -205,13 +205,16 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
 
     // Get first path element
     if (!(token = strtok_r(my_path, "/", &saveptr))) {
-        return -EINVAL;
+        return 0;
     } else if (!strcmp(token, "public")
      || !strcmp(token, "private")
      || !strcmp(token, "backup")
      || !strcmp(token, "anonymous")) {
         strcat(fpath, token);
         *mode = MODE_PIPETHROUGH_RW;
+    
+        strcat(fpath, "/");
+        strcat(fpath, mammut_data.userid);
     } else if (!strcmp(token, "list-anonymous")) {
         *mode = MODE_LISTDIR_ANON;
     } else if (!strcmp(token, "list-public")) {
@@ -220,19 +223,17 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
         printf("Listing Root directory");
         return -EPERM;
     }
-    strcat(fpath, "/");
-    strcat(fpath, mammut_data.userid);
 
     // Check second path element
     if(!(token = strtok_r(NULL, "/", &saveptr))) {
-        return -ENOENT;
-    } if (*mode == MODE_LISTDIR_PUBLIC) {
+        return 0;
+    } else if (*mode == MODE_LISTDIR_PUBLIC) {
         *mode = MODE_PIPETHROUGH_RO;
         
         int retstat = _mammut_locate_userdir(fpath, token, "public");
         if(retstat != 0) return retstat;
 
-        strcat(fpath, "/public");
+        strcat(fpath, "public");
         printf("Listing public : %s token %s\n", fpath, token);
     } else if (*mode == MODE_LISTDIR_ANON) {
         *mode = MODE_PIPETHROUGH_ANON;
@@ -1437,17 +1438,32 @@ int main(int argc, char *argv[])
     config_destroy(&cfg);
 
 
-    mammut_data.userid = argv[argc-1];
-    printf("userid: %s\n", mammut_data.userid);
-
-    char fPath[PATH_MAX];
-    if(_mammut_locate_userdir(fPath, mammut_data.userid, "public") != 0)
+    if(strcmp(argv[argc - 1], "0") == 0)
     {
-        printf("Failed to loacte user dir!");
-        return EXIT_FAILURE;
+        mammut_data.userid = 0;
+        printf("Using anonymous user");
     }
-
-    mammut_data.user_basepath = strdup(fPath);
+    else
+    {
+        mammut_data.userid = argv[argc-1];
+        printf("userid: %s\n", mammut_data.userid);
+    }
+    
+    char fPath[PATH_MAX];
+    if(mammut_data.userid)
+    {
+        if(_mammut_locate_userdir(fPath, mammut_data.userid, "public") != 0)
+        {
+            printf("Failed to loacte user dir!");
+            return EXIT_FAILURE;
+        }
+        mammut_data.user_basepath = strdup(fPath);
+    }
+    else
+    {
+        mammut_data.user_basepath = "";
+        mammut_data.userid = "";
+    }
 
     struct passwd *passwd_info = getpwnam(configAnonUser);
     
