@@ -1071,10 +1071,13 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
         case MODE_HOMEDIR:
             filler(buf, ".", NULL, 0);
             filler(buf, "..", NULL, 0);
-            filler(buf, "public", NULL, 0);
-            filler(buf, "anonymous", NULL, 0);
-            filler(buf, "private", NULL, 0);
-            filler(buf, "backup", NULL, 0);
+            if(strlen(mammut_data.userid) != 0)
+            {
+                filler(buf, "public", NULL, 0);
+                filler(buf, "anonymous", NULL, 0);
+                filler(buf, "private", NULL, 0);
+                filler(buf, "backup", NULL, 0);
+            }
             filler(buf, "list-public", NULL, 0);
             filler(buf, "list-anonymous", NULL, 0);
             break;
