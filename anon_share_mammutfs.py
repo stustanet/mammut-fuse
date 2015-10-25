@@ -130,7 +130,7 @@ def main():
             for target, (raid, user, directory) in anon_map.iteritems():
                 # assert sane_filename(target) and len(target) < 256
                 # sources = ' '.join([":"+os.path.join(RAIDBASE,r,RAIDRELATIVE,source) for r in RAIDS])
-                f.write("%s %s %s %s\n" % (target, raid, user, directory))
+                f.write("%s %s/%s/%s " % (target, raid, user, directory))
 
         os.rename("/srv/anonym.mapping", "/srv/anonym.mapping.bak")
         os.rename("/srv/anonym.mapping.new", "/srv/anonym.mapping")
