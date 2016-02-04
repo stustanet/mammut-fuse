@@ -197,6 +197,7 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
     // TODO: integrate translation of anonymouse path to original anon path
     //strukutur pfad public/private.../: ./public → /"raid"/public/USERID/
     char *my_path = strdup(path);
+    if(my_path == NULL) return -ENOMEM;
     char *token;
     char *saveptr;
 
@@ -204,9 +205,12 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
     strcpy(fpath, mammut_data.user_basepath);
 
     // Get first path element
-    if (!(token = strtok_r(my_path, "/", &saveptr))) {
+    if (!(token = strtok_r(my_path, "/", &saveptr))) 
+    {
+        free(my_path);
         return 0;
-    } else if (!strcmp(token, "public")
+    } 
+    else if (!strcmp(token, "public")
      || !strcmp(token, "private")
      || !strcmp(token, "backup")
      || !strcmp(token, "anonymous")) {
@@ -221,11 +225,14 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
         *mode = MODE_LISTDIR_PUBLIC;
     } else {
         printf("Listing Root directory");
+        free(my_path);
         return -EPERM;
     }
 
     // Check second path element
-    if(!(token = strtok_r(NULL, "/", &saveptr))) {
+    if(!(token = strtok_r(NULL, "/", &saveptr))) 
+    {
+        free(my_path);
         return 0;
     } else if (*mode == MODE_LISTDIR_PUBLIC) {
         *mode = MODE_PIPETHROUGH_RO;
@@ -261,6 +268,7 @@ static int mammut_fullpath(char fpath[PATH_MAX], const char *path, enum mammut_p
     };
 
     printf("mammut_fullpath: fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
+    free(my_path);
     return 0;
 }
 

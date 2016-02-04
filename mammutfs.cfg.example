@@ -1,7 +1,8 @@
+# pathes MUST NOT be relative
 raids = [
     "/srv/raids/raid0/",
     "/srv/raids/raid1/",
     "/srv/raids/raid2/"
 ];
 anon_mapping = "/srv/anon_mapping";
-
+anon_user = "nobody";
