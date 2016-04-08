@@ -53,7 +53,8 @@ static struct {
     char *userid;
     char **raids;
     size_t raid_count;
-    char *user_basepath;
+    char *reports_path;
+    //char *user_basepath;
 } mammut_data;
 
 static struct {
@@ -273,7 +274,8 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     char *saveptr;
 
     *mode = MODE_HOMEDIR;
-    strcpy(fpath, mammut_data.user_basepath);
+    //strcpy(fpath, mammut_data.user_basepath);
+    fpath[0] = 0;
 
     int is_public = 0;
 
@@ -290,6 +292,8 @@ static int mammut_fullpath(char fpath[PATH_MAX],
      || !strcmp(token, "backup")
      || !strcmp(token, "anonymous"))
     {
+        int retstat = _mammut_locate_userdir(fpath, mammut_data.userid, token);
+        if(retstat != 0) return retstat;
 
         is_public = strcmp(token, "public") == 0 || strcmp(token, "anonymous") == 0;
 
@@ -302,12 +306,12 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     }
     else if (!strcmp(token, "reports"))
     {
-        strncat(fpath, token, PATH_MAX - strlen(fpath));
-        *mode = MODE_PIPETHROUGH_RO;
-        if(type) *type = PATH_TYPE_HOMEDIR;
-
+        strcpy(fpath, mammut_data.reports_path);
         strncat(fpath, "/", PATH_MAX - strlen(fpath));
         strncat(fpath, mammut_data.userid, PATH_MAX - strlen(fpath));
+        
+        *mode = MODE_PIPETHROUGH_RO;
+        if(type) *type = PATH_TYPE_HOMEDIR;
     }
     else if (!strcmp(token, "list-anonymous")) // list- are the public dirs from all others (including mine)
     {
@@ -1631,6 +1635,17 @@ int main(int argc, char *argv[])
         mammut_data.raids[i] = strdup(raid);
         printf("\t%s\n",mammut_data.raids[i]);
     }
+    
+
+    const char *reports_path;
+    if(config_lookup_string(&cfg, "reports_path", &reports_path) != CONFIG_TRUE)
+    {
+        printf("Invalid config: \"reports_path\" not found");
+        return EXIT_FAILURE;
+    }
+
+    mammut_data.reports_path = strdup(reports_path);
+
     config_destroy(&cfg);
 
 
@@ -1644,7 +1659,8 @@ int main(int argc, char *argv[])
         mammut_data.userid = argv[argc-1];
         printf("userid: %s\n", mammut_data.userid);
     }
-    
+   
+    /*
     char fPath[PATH_MAX];
     if(mammut_data.userid)
     {
@@ -1660,6 +1676,7 @@ int main(int argc, char *argv[])
         mammut_data.user_basepath = "";
         mammut_data.userid = "";
     }
+    */
 
     struct passwd *passwd_info = getpwnam(configAnonUser);
     

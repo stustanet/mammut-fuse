@@ -45,9 +45,11 @@ def main():
     with open(args.config) as config_file:
             cfg = json.load(config_file)
 
-    raids   = cfg['anon_dirs']
-    mapfile = cfg['mapping_file']
-    map_prefix = cfg['anon_prefix']
+    raids           = cfg['anon_dirs']
+    mapfile         = cfg['mapping_file']
+    map_prefix      = cfg['anon_prefix']
+    reports_dir     = cfg['reports_dir']
+    reports_name    = cfg['reports_name']
 
     if debug > 0:
         print('RAIDS:')
@@ -162,6 +164,31 @@ def main():
             os.rename(mapfile, mapfile + ".old")
 
         os.rename(mapfile + ".new", mapfile)
+
+        usermappings = {}
+        for target, (raid, src) in anon_map.items():
+            userid, dirname = src.split('/')
+            if not userid in usermappings:
+                usermappings[userid] = set()
+
+            usermappings[userid].add((target, dirname))
+
+        for r in raids:
+            for user in os.listdir(r):
+                if not os.path.isdir(os.path.join(r, user)):
+                    continue
+
+                if not user in usermappings:
+                    continue
+
+                reportfolder = os.path.join(reports_dir, user)
+                if not os.path.lexists(reportfolder):
+                    os.makedirs(reportfolder, 0o755)
+
+                with open(os.path.join(reportfolder, reports_name), "w") as f:
+                    for export, src in usermappings[user]:
+                        f.write("%s is %s\n" % (src, export))
+
 
 if __name__ == '__main__':
     main()

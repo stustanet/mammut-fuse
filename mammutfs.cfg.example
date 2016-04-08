@@ -1,8 +1,10 @@
-# pathes MUST NOT be relative
+# pathes MUST BE absulute pathes
 raids = [
-    "/srv/raids/raid0/",
-    "/srv/raids/raid1/",
-    "/srv/raids/raid2/"
+    "/raids/raid0",
+    "/raids/raid1",
+    "/raids/raid2"
 ];
-anon_mapping = "/srv/anon_mapping";
+anon_mapping = "/anonmap/anonmap";
+reports_path = "/raids/reports";
 anon_user = "nobody";
+
