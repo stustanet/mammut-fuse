@@ -37,6 +37,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <bsd/string.h>
 #include <linux/limits.h>
 #include <libconfig.h>
 #include <sys/types.h> // stat()
@@ -225,7 +226,7 @@ static int _mammut_locate_anondir(char fpath[PATH_MAX], const char *anon_dir)
     {
         if(strcmp(anon_mappings[i].mapped, anon_dir) == 0)
         {
-            strncpy(fpath, anon_mappings[i].original, strlen(anon_mappings[i].original) + 1);
+            strlcpy(fpath, anon_mappings[i].original, PATH_MAX);
             return 0;
         }
     }
@@ -245,9 +246,9 @@ static void _chmod_recursive(const char *path, int mode)
         for (dirent = readdir(dp); dirent ; dirent = readdir(dp))
         {
             char sn_path[PATH_MAX];
-            strcpy(sn_path, path);
-            strncat(sn_path, "/", sizeof(sn_path) - strlen(sn_path));
-            strncat(sn_path, dirent->d_name, sizeof(sn_path) - strlen(sn_path));
+            strlcpy(sn_path, path, sizeof(sn_path));
+            strlcat(sn_path, "/", sizeof(sn_path));
+            strlcat(sn_path, dirent->d_name, sizeof(sn_path));
             _chmod_recursive(sn_path, mode);
         }
         closedir(dp);
@@ -297,18 +298,18 @@ static int mammut_fullpath(char fpath[PATH_MAX],
 
         is_public = strcmp(token, "public") == 0 || strcmp(token, "anonymous") == 0;
 
-        strncat(fpath, token, PATH_MAX - strlen(fpath));
+        strlcat(fpath, token, PATH_MAX);
         *mode = MODE_PIPETHROUGH_RW;
         if(type) *type = PATH_TYPE_HOMEDIR;
 
-        strncat(fpath, "/", PATH_MAX - strlen(fpath));
-        strncat(fpath, mammut_data.userid, PATH_MAX - strlen(fpath));
+        strlcat(fpath, "/", PATH_MAX);
+        strlcat(fpath, mammut_data.userid, PATH_MAX);
     }
     else if (!strcmp(token, "reports"))
     {
-        strcpy(fpath, mammut_data.reports_path);
-        strncat(fpath, "/", PATH_MAX - strlen(fpath));
-        strncat(fpath, mammut_data.userid, PATH_MAX - strlen(fpath));
+        strlcpy(fpath, mammut_data.reports_path, PATH_MAX);
+        strlcat(fpath, "/", PATH_MAX);
+        strlcat(fpath, mammut_data.userid, PATH_MAX);
         
         *mode = MODE_PIPETHROUGH_RO;
         if(type) *type = PATH_TYPE_HOMEDIR;
@@ -347,7 +348,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         int retstat = _mammut_locate_userdir(fpath, token, "public");
         if(retstat != 0) return retstat;
 
-        strncat(fpath, "public", PATH_MAX - strlen(fpath));
+        strlcat(fpath, "public", PATH_MAX);
         printf("Listing public : %s token %s\n", fpath, token);
     }
     else if (*mode == MODE_LISTDIR_ANON) 
@@ -369,16 +370,17 @@ static int mammut_fullpath(char fpath[PATH_MAX],
 
     if(*mode == MODE_PIPETHROUGH_RO || *mode == MODE_PIPETHROUGH_RW)
     {
-        strncat(fpath, "/", PATH_MAX - strlen(fpath));
-        strncat(fpath, token, PATH_MAX - strlen(fpath));
+        strlcat(fpath, "/", PATH_MAX);
+        strlcat(fpath, token, PATH_MAX);
     }
 
     while((token = strtok_r(NULL, "/", &saveptr))){
         if (*mode == MODE_PIPETHROUGH_RO
          || *mode == MODE_PIPETHROUGH_RW
-         || *mode == MODE_PIPETHROUGH_ANON) {
-            strncat(fpath, "/", PATH_MAX - strlen(fpath));
-            strncat(fpath, token, PATH_MAX - strlen(fpath));
+         || *mode == MODE_PIPETHROUGH_ANON)
+        {
+            strlcat(fpath, "/", PATH_MAX);
+            strlcat(fpath, token, PATH_MAX);
         }
     };
 
@@ -390,7 +392,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
 static int _mammut_parent_writable ( const char *path ) {
     char modified_path[PATH_MAX];
     char fpath[PATH_MAX];
-    strcpy(modified_path, path);
+    strlcpy(modified_path, path, sizeof(fpath));
     char *ptr = strrchr(modified_path, '/');
     if (ptr != NULL)
         *ptr = '\0';
@@ -1112,9 +1114,8 @@ static int mammut_listxattr(const char *path, char *list, size_t size)
     if (retstat < 0)
         retstat = mammut_error("mammut_listxattr llistxattr");
 
-    for (ptr = list; ptr < list + retstat; ptr += strlen(ptr)+1)
 
-        return retstat;
+    return retstat;
 }
 
 /** Remove extended attributes */
@@ -1282,8 +1283,8 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
                 DIR *cur_raid;
                 printf("Running raid %s\n", mammut_data.raids[i]);
 
-                strcpy(publicPath, mammut_data.raids[i]);
-                strcat(publicPath, "/public");
+                strlcpy(publicPath, mammut_data.raids[i], sizeof(publicPath));
+                strlcat(publicPath, "/public", sizeof(publicPath));
                 cur_raid = opendir(publicPath);
                 if(cur_raid != 0)
                 {

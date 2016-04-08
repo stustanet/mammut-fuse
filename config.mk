@@ -1,6 +1,6 @@
 # includes and libs
 INCS = -I. -I/usr/include
-LIBS = -L/usr/lib -lc `pkg-config --libs fuse` `pkg-config --libs libconfig`
+LIBS = -L/usr/lib -lc `pkg-config --libs fuse` `pkg-config --libs libconfig` `pkg-config --libs libbsd`
 
 # flags
 CPPFLAGS = `pkg-config --cflags fuse`
