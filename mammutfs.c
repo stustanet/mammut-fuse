@@ -65,11 +65,9 @@ static struct {
 
 enum mammut_path_mode {
     MODE_HOMEDIR,
-    MODE_LISTDIR_PUBLIC,
-    MODE_LISTDIR_ANON,
+    MODE_LISTDIR_SHARED,
     MODE_PIPETHROUGH_ANON,
-    MODE_PIPETHROUGH_RO,
-    MODE_PIPETHROUGH_RW
+    MODE_PIPETHROUGH,
 };
 
 enum mammut_path_type
@@ -305,7 +303,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         is_public = strcmp(token, "public") == 0 || strcmp(token, "anonymous") == 0;
 
         strlcat(fpath, token, PATH_MAX);
-        *mode = MODE_PIPETHROUGH_RW;
+        *mode = MODE_PIPETHROUGH;
         if(type) *type = PATH_TYPE_HOMEDIR;
 
         strlcat(fpath, "/", PATH_MAX);
@@ -317,19 +315,13 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         strlcat(fpath, "/", PATH_MAX);
         strlcat(fpath, mammut_data.userid, PATH_MAX);
         
-        *mode = MODE_PIPETHROUGH_RO;
+        *mode = MODE_PIPETHROUGH;
         if(type) *type = PATH_TYPE_HOMEDIR;
     }
-    else if (!strcmp(token, "list-anonymous")) // list- are the public dirs from all others (including mine)
+    else if (!strcmp(token, "shared"))
     {
         is_public = 1;
-        *mode = MODE_LISTDIR_ANON;
-        if(type) *type = PATH_TYPE_HOMEDIR;
-    }
-    else if (!strcmp(token, "list-public"))
-    {
-        is_public = 1;
-        *mode = MODE_LISTDIR_PUBLIC;
+        *mode = MODE_LISTDIR_SHARED;
         if(type) *type = PATH_TYPE_HOMEDIR;
     }
     else 
@@ -345,27 +337,29 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         free(my_path);
         return 0;
     }
-    else if (*mode == MODE_LISTDIR_PUBLIC)
+    else if (*mode == MODE_LISTDIR_SHARED) 
     {
-        // open s public dir from someone else -> RO
-        *mode = MODE_PIPETHROUGH_RO;
-        if(type) *type = PATH_TYPE_PUBLICDIR;
-        
-        int retstat = _mammut_locate_userdir(fpath, token, "public");
-        if(retstat != 0) return retstat;
-
-        strlcat(fpath, "public", PATH_MAX);
-        printf("Listing public : %s token %s\n", fpath, token);
-    }
-    else if (*mode == MODE_LISTDIR_ANON) 
-    {
-        *mode = MODE_PIPETHROUGH_ANON;
-        if(type) *type = PATH_TYPE_PUBLICDIR;
         
         _mammut_read_anonymous_mapping(); // this is a caching function
         
         int retstat = _mammut_locate_anondir(fpath, token);
-        if(retstat != 0) return retstat;
+        if(retstat != 0)
+        {
+            // NOT anon
+            *mode = MODE_PIPETHROUGH;
+            if(type) *type = PATH_TYPE_PUBLICDIR;
+
+            retstat = _mammut_locate_userdir(fpath, token, "public");
+            if(retstat != 0) return retstat;
+
+        strlcat(fpath, "public", PATH_MAX);
+
+        }
+        else
+        {
+            *mode = MODE_PIPETHROUGH_ANON;
+            if(type) *type = PATH_TYPE_PUBLICDIR;
+        }
         
         /* strcat(fpath, "/anonymous"); */
     }
@@ -374,15 +368,14 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         if(type) *type = is_public ? PATH_TYPE_PUBLICDIR : PATH_TYPE_PRIVATEDIR;
     }
 
-    if(*mode == MODE_PIPETHROUGH_RO || *mode == MODE_PIPETHROUGH_RW)
+    if(*mode == MODE_PIPETHROUGH)
     {
         strlcat(fpath, "/", PATH_MAX);
         strlcat(fpath, token, PATH_MAX);
     }
 
     while((token = strtok_r(NULL, "/", &saveptr))){
-        if (*mode == MODE_PIPETHROUGH_RO
-         || *mode == MODE_PIPETHROUGH_RW
+        if (*mode == MODE_PIPETHROUGH
          || *mode == MODE_PIPETHROUGH_ANON)
         {
             strlcat(fpath, "/", PATH_MAX);
@@ -439,8 +432,7 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
     switch(mode)
     {
         case MODE_HOMEDIR:
-        case MODE_LISTDIR_ANON:
-        case MODE_LISTDIR_PUBLIC:
+        case MODE_LISTDIR_SHARED:
             printf("Getattr of homedir\n");
             statbuf->st_dev = 0;               // IGNORED Device
             statbuf->st_ino = 999;             // IGNORED inode number
@@ -457,8 +449,7 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
             statbuf->st_ctim.tv_sec = 1;       // Last Status change
             return 0;
         case MODE_PIPETHROUGH_ANON:
-        case MODE_PIPETHROUGH_RW:
-        case MODE_PIPETHROUGH_RO:
+        case MODE_PIPETHROUGH:
             if ((retstat = lstat(fpath, statbuf)))
             {
                 retstat = mammut_error("mammut_getattr lstat");
@@ -472,14 +463,6 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
         statbuf->st_uid = global_data.anonymous_uid;
         statbuf->st_gid = global_data.anonymous_gid;
 
-    }
-
-    if (mode == MODE_PIPETHROUGH_RO || mode == MODE_PIPETHROUGH_ANON)
-    {
-        if (S_ISREG(statbuf->st_mode))
-            statbuf->st_mode |= 0004;
-        else if (S_ISDIR(statbuf->st_mode))
-            statbuf->st_mode |= 0005;
     }
 
     return retstat;
@@ -656,7 +639,7 @@ static int mammut_chmod(const char *path, mode_t mode)
     if(type != PATH_TYPE_PRIVATEDIR && type != PATH_TYPE_PUBLICDIR)
        return -EPERM; 
     
-    // prevent inaccessable dirs in public dirs
+    // prevent inaccessable items in public and write access on foreign items
     if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005); 
     
     retstat = chmod(fpath, mode);
@@ -965,15 +948,11 @@ static int mammut_opendir(const char *path, struct fuse_file_info *fi)
 
     switch (mode)
     {
-        case MODE_LISTDIR_ANON:
-            break;
-    
-        case MODE_LISTDIR_PUBLIC:
+        case MODE_LISTDIR_SHARED:
             break;
     
         case MODE_PIPETHROUGH_ANON:
-        case MODE_PIPETHROUGH_RW:
-        case MODE_PIPETHROUGH_RO:
+        case MODE_PIPETHROUGH:
             dp = opendir(fpath);
             if (dp == NULL)
             {
@@ -1043,8 +1022,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
     // read the whole directory; the second means the buffer is full.
     switch (mode)
     {
-        case MODE_PIPETHROUGH_RO:
-        case MODE_PIPETHROUGH_RW:
+        case MODE_PIPETHROUGH:
         case MODE_PIPETHROUGH_ANON:
             printf("RO/ROW/ANON Iterating through path %s\n", fPath);
             {
@@ -1072,10 +1050,9 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
                 filler(buf, "backup", NULL, 0);
                 filler(buf, "reports", NULL, 0);
             }
-            filler(buf, "list-public", NULL, 0);
-            filler(buf, "list-anonymous", NULL, 0);
+            filler(buf, "shared", NULL, 0);
             break;
-        case MODE_LISTDIR_PUBLIC:
+        case MODE_LISTDIR_SHARED:
             printf("\n\nLIST PUBLIC %s\n\n", fPath);
             filler(buf, ".", NULL, 0);
             filler(buf, "..", NULL, 0);
@@ -1090,10 +1067,27 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
                 if(cur_raid != 0)
                 {
                     struct dirent *dirent;
+                    
                     for (dirent = readdir(cur_raid); dirent ; dirent = readdir(cur_raid)) {
                         // eat the . and .. of the raid-dirs
                         if(strncmp(dirent->d_name, ".", 1) == 0 || strncmp(dirent->d_name, "..", 2) == 0)
                             continue;
+                        
+                        char tmppath[PATH_MAX];
+                        strlcpy(tmppath, publicPath, sizeof(tmppath));
+                        strlcat(tmppath, "/", sizeof(tmppath));
+                        strlcat(tmppath, dirent->d_name, sizeof(tmppath));
+
+                        DIR *test_empty = opendir(tmppath);
+                        if(test_empty == 0) continue;
+
+                        int count;
+                        for(count = 0; count < 3 && readdir(test_empty); count++);
+
+                        closedir(test_empty);
+
+                        if(count < 3) continue;
+
                         printf("Adding Entry %s\n", dirent->d_name);
                         if (filler(buf, dirent->d_name, NULL, 0) != 0)
                             return -ENOMEM;
@@ -1102,9 +1096,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
                     closedir(cur_raid);
                 }
             }
-
-            break;
-        case MODE_LISTDIR_ANON:
+            
             _mammut_read_anonymous_mapping(); // this method is efficient and only reads on modification
             printf("\n\nLIST ANON %s\n\n", fPath);
             filler(buf, ".", NULL, 0);
@@ -1210,17 +1202,13 @@ static int mammut_access(const char *path, int mask)
 
     switch (mode) {
         case MODE_HOMEDIR:
-        case MODE_LISTDIR_ANON:
-        case MODE_LISTDIR_PUBLIC:
+        case MODE_LISTDIR_SHARED:
             if ((mask & W_OK) == W_OK ) return -1;
             else return 0;
             break;
-        case MODE_PIPETHROUGH_RO:
+        
         case MODE_PIPETHROUGH_ANON:
-            if ((mask & W_OK) == W_OK ) return -1;
-            return access(fpath, mask);
-            break;
-        case MODE_PIPETHROUGH_RW:
+        case MODE_PIPETHROUGH:
             return access(fpath, mask);
             break;
         default:
@@ -1264,59 +1252,6 @@ static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *f
 
     return retstat;
 }
-
-/**
- * Change the size of an open file
- *
- * This method is called instead of the truncate() method if the
- * truncation was invoked from an ftruncate() system call.
- *
- * If this method is not implemented or under Linux kernel
- * versions earlier than 2.6.15, the truncate() method will be
- * called instead.
- *
- * Introduced in version 2.5
- *//*
-static int mammut_ftruncate(const char *path, off_t offset, struct fuse_file_info *fi)
-{
-    int retstat = 0;
-
-    retstat = ftruncate(fi->fh, offset);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_ftruncate ftruncate");
-
-    return retstat;
-}*/
-
-/**
- * Get attributes from an open file
- *
- * This method is called instead of the getattr() method if the
- * file information is available.
- *
- * Currently this is only called after the create() method if that
- * is implemented (see above).  Later it may be called for
- * invocations of fstat() too.
- *
- * Introduced in version 2.5
- *//*
-static int mammut_fgetattr(const char *path, struct stat *statbuf, struct fuse_file_info *fi)
-{
-    int retstat = 0;
-
-    // On FreeBSD, trying to do anything with the mountpoint ends up
-    // opening it, and then using the FD for an fgetattr.  So in the
-    // special case of a path of "/", I need to do a getattr on the
-    // underlying root directory instead of doing the fgetattr().
-    if (!strcmp(path, "/"))
-        return mammut_getattr(path, statbuf);
-
-    retstat = fstat(fi->fh, statbuf);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_fgetattr fstat");
-
-    return retstat;
-}*/
 
 struct fuse_operations mammut_oper = {
     .getattr = mammut_getattr,
