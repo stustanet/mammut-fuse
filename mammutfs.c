@@ -1364,8 +1364,8 @@ struct fuse_operations mammut_oper = {
 
 void mammut_usage()
 {
-    fprintf(stderr, "usage:  mammutfs fuseopts mountpoint configfile userid\n");
-    abort();
+    fprintf(stderr, "usage:  mammutfs [fuseopts] mountpoint configfile userid\n");
+    exit(EXIT_FAILURE);
 }
 
 
