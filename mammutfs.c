@@ -87,7 +87,7 @@ static int mammut_error(const char *str)
     return ret;
 }
 
-const char* mapping_file_path;
+const char *mapping_file_path;
 
 time_t mapping_last_modification_time = 0;
 
@@ -142,20 +142,25 @@ static int _mammut_read_anonymous_mapping()
             {
                 if(anon_mappings_count >= anon_map_buffer_size)
                 {
-                    if(anon_map_buffer_size == 0)
+                    size_t newsize = anon_map_buffer_size * 2;
+                    if(newsize < 32)
                     {
-                        anon_map_buffer_size = 1;
+                        newsize = 32;
                     }
 
-                    anon_map_buffer_size = anon_map_buffer_size * 2;
-                    anon_mappings = (struct anon_mapping_st*) realloc(
+                    struct anon_mapping_st *tmp = (struct anon_mapping_st*) realloc(
                             anon_mappings,
-                            sizeof(struct anon_mapping_st) * anon_map_buffer_size);
+                            sizeof(struct anon_mapping_st) * newsize);
                     
-                    if(anon_mappings == 0)
+                    if(tmp == 0)
                     {
                         printf("Failed to allocate %i anon map entries.", (int)anon_mappings_count);
                         return -ENOMEM;
+                    }
+                    else
+                    {
+                        anon_map_buffer_size = newsize;
+                        anon_mappings = tmp;
                     }
                 }
 
@@ -368,8 +373,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
             retstat = _mammut_locate_userdir(fpath, token, "public");
             if(retstat != 0) return retstat;
 
-        strlcat(fpath, "public", PATH_MAX);
-
+            strlcat(fpath, "public", PATH_MAX);
         }
         else
         {
@@ -421,7 +425,7 @@ static int _load_shared_listing()
         if(shared_listing_buffer_size == 0)
         {
             shared_listing_buffer_size = 1024;
-            shared_listing = (char*)malloc(shared_listing_buffer_size); 
+            shared_listing = (char *)malloc(shared_listing_buffer_size); 
         }
 
         size_t shared_used = 1;
@@ -465,13 +469,15 @@ static int _load_shared_listing()
                     size_t reqsize = shared_used + strlen(dirent->d_name) + 1;
                     if(reqsize > shared_listing_buffer_size)
                     {
-                        shared_listing_buffer_size *= 2;
-                        shared_listing = (char *)realloc(shared_listing, shared_listing_buffer_size);
-                        if(shared_listing == 0)
+                        size_t newsize = shared_listing_buffer_size * 2;
+                        char *tmp = (char *)realloc(shared_listing, newsize);
+                        if(tmp == 0)
                         {
                             shared_listing_buffer_size = 0;
                             return -ENOMEM;
                         }
+                        shared_listing_buffer_size = newsize;
+                        shared_listing = tmp;
                     }
                     
                     strcpy(shared_listing + (shared_used - 1), dirent->d_name);
@@ -491,13 +497,15 @@ static int _load_shared_listing()
             size_t reqsize = shared_used + strlen(anon_mappings[i].mapped) + 1;
             if(reqsize > shared_listing_buffer_size)
             {
-                shared_listing_buffer_size *= 2;
-                shared_listing = (char *)realloc(shared_listing, shared_listing_buffer_size);
-                if(shared_listing == 0)
+                size_t newsize = shared_listing_buffer_size * 2;
+                char *tmp = (char *)realloc(shared_listing, newsize);
+                if(tmp == 0)
                 {
                     shared_listing_buffer_size = 0;
                     return -ENOMEM;
                 }
+                shared_listing_buffer_size = newsize;
+                shared_listing = tmp;
             }
             
             strcpy(shared_listing + (shared_used - 1), anon_mappings[i].mapped);
@@ -1399,7 +1407,7 @@ int main(int argc, char *argv[])
     if (argc < 4)
         mammut_usage();
 
-    const char* mammutfs_config_file = argv[argc-2];
+    const char *mammutfs_config_file = argv[argc-2];
 
     // read config file
     config_init(&cfg);
@@ -1412,7 +1420,7 @@ int main(int argc, char *argv[])
         return(EXIT_FAILURE);
     }
 
-    const char* _CONFIG_ANON_MAPPING;
+    const char *_CONFIG_ANON_MAPPING;
     if(config_lookup_string(&cfg, "anon_mapping", &_CONFIG_ANON_MAPPING) != CONFIG_TRUE)
     {
         printf("Invalid config: \"anon_mapping\" not found");
@@ -1430,7 +1438,7 @@ int main(int argc, char *argv[])
     const config_setting_t *raids;
     raids = config_lookup(&cfg, "raids");
     mammut_data.raid_count = config_setting_length(raids);
-    mammut_data.raids = (char**)malloc(mammut_data.raid_count * sizeof(char*));
+    mammut_data.raids = (char **)malloc(mammut_data.raid_count * sizeof(char *));
 
     printf("used raids:\n");
     for(unsigned int i = 0; i < mammut_data.raid_count; i++)
