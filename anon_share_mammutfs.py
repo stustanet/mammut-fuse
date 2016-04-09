@@ -60,7 +60,7 @@ def main():
 
     dirty = False
 
-    # mapping file: <export_name> <anon_source_raid> <anon_source_dir>
+    # mapping file: <export_name> <userid> <anon_source_dir>
     anon_map = {}
     anon_sources = set()
 
@@ -71,45 +71,32 @@ def main():
         with open(mapfile) as f:
             for line in f:
                 line = line.strip()
-                export_name, src_raid, src_path = line.split()
+                export_name, userid, orig = line.split()
 
-                src_full_path = os.path.join(src_raid, src_path)
-                # check if the user and directory is still on this raid
+                # check if the user and directory is still existing
                 if debug > 1:
-                    print("check if %s still exists" % src_full_path)
+                    print("check if %s of %s still exists" % (orig, userid))
 
-                if os.path.isdir(src_full_path):
-                    if debug > 1:
-                        print("-> Still valid")
+                still_valid = False
+                for r in raids: # loop over all raids
+                    path_on_raid = os.path.join(r, userid, orig)
 
-                    anon_map[export_name] = (src_raid, src_path)
-                    anon_sources.add(src_full_path)
+                    if os.path.isdir(path_on_raid): # check if user dir exists
+                        if debug > 1:
+                            print("OK: path=%s" % path_on_raid)
 
-                else: # try to find the new raid for this dir
+                        still_valid = True
+                        break
+
+                if not still_valid:
+                    if debug > 0:
+                        print("Removed: %s" % export_name)
 
                     dirty = True
-                    new_raid = None
 
-                    for r in raids: # loop over all raids
-                        path_on_raid = os.path.join(r, src_path)
-
-                        if os.path.isdir(path_on_raid): # check if user dir exists
-                            new_raid = r
-                            break
-
-                    if new_path is None:
-                        if debug > 0:
-                            print("Removed: %s (%s)" % (export_name, src_full_path))
-
-                        reportfile = os.path.join("/srv/reports/", user, "anonym", directory)
-                        if os.path.isfile(reportfile) and not os.path.islink(reportfile):
-                            os.unlink(reportfile)
-                    else:
-                        if debug > 0:
-                            print("Moved: %s (%s to %s)" % (export_name, src_raid, new_raid))
-
-                        anon_map[export_name] = (new_raid, src_path)
-                        anon_sources.add(os.path.join(new_raid, src_path))
+                else:
+                    anon_map[export_name] = (userid, orig)
+                    anon_sources.add(os.path.join(userid, orig))
 
     for r in raids:
         for user in os.listdir(r):
@@ -130,7 +117,7 @@ def main():
                 if entry.startswith("new_") or entry.startswith("old_"):
                     continue # user is transfered between raids at the moment
 
-                if src_path in anon_sources:
+                if os.path.join(user, entry) in anon_sources:
                     continue # this is already mapped
 
                 rcode = []
@@ -145,8 +132,8 @@ def main():
                 if debug > 0:
                     print("New anon dir: %s (%s)" % (export_name, src_path))
 
-                anon_map[export_name] = (r, os.path.join(user, entry))
-                anon_sources.add(src_path)
+                anon_map[export_name] = (user, entry)
+                anon_sources.add(os.path.join(user, entry))
 
                 dirty = True
 
@@ -155,10 +142,10 @@ def main():
             print("Rewrite anon map: %s, number of mappings: %i" % (mapfile, len(anon_map)))
 
         with open(mapfile + ".new", "w") as f:
-            for target, (raid, src) in anon_map.items():
-                f.write("%s %s %s\n" % (target, raid, src))
+            for target, (user, src) in anon_map.items():
+                f.write("%s %s %s\n" % (target, user, src))
                 if debug > 1:
-                    print("%s → %s" % (target, os.path.join(raid, src)))
+                    print("%s → %s" % (target, os.path.join(user, src)))
 
         if os.path.isfile(mapfile):
             os.rename(mapfile, mapfile + ".old")
@@ -166,12 +153,11 @@ def main():
         os.rename(mapfile + ".new", mapfile)
 
         usermappings = {}
-        for target, (raid, src) in anon_map.items():
-            userid, dirname = src.split('/')
-            if not userid in usermappings:
-                usermappings[userid] = set()
+        for target, (user, src) in anon_map.items():
+            if not user in usermappings:
+                usermappings[user] = set()
 
-            usermappings[userid].add((target, dirname))
+            usermappings[user].add((target, src))
 
         for r in raids:
             for user in os.listdir(r):

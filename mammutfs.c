@@ -37,6 +37,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <bsd/string.h>
 #include <linux/limits.h>
 #include <libconfig.h>
@@ -91,13 +92,19 @@ const char* mapping_file_path;
 time_t mapping_last_modification_time = 0;
 
 struct anon_mapping_st {
-    char* mapped;
-    char* original;
+    char *mapped;
+    char *original;
+    char *userid;
 } *anon_mappings = 0;
 
 size_t anon_mappings_count = 0;
 size_t anon_map_buffer_size = 0;
 
+char *shared_listing = 0;
+size_t shared_listing_buffer_size = 0;
+
+time_t last_shared_listing_update = 0;
+time_t shared_listing_update_rate = 60;
 
 /**
  * reads the anonymous mapping into the datastructure mapping
@@ -115,6 +122,7 @@ static int _mammut_read_anonymous_mapping()
             {
                 free(anon_mappings[i].mapped);
                 free(anon_mappings[i].original);
+                free(anon_mappings[i].userid);
             }
             
             FILE *mapping = fopen(mapping_file_path, "r");
@@ -127,10 +135,10 @@ static int _mammut_read_anonymous_mapping()
 
             anon_mappings_count = 0;
 
-            char *mapped = 0, *base = 0, *sub = 0;
-            
+            char *mapped = 0, *orig = 0, *user = 0;
+
             // whitespace at end eats newline and spaces
-            while(fscanf(mapping, "%ms %ms %ms ", &mapped, &base, &sub) == 3) 
+            while(fscanf(mapping, "%ms %ms %ms ", &mapped, &user, &orig) == 3) 
             {
                 if(anon_mappings_count >= anon_map_buffer_size)
                 {
@@ -151,40 +159,35 @@ static int _mammut_read_anonymous_mapping()
                     }
                 }
 
-                char *path = (char*)malloc(strlen(base) + strlen(sub) + 2);
-                strcpy(path, base);
-                strcat(path, "/");
-                strcat(path, sub);
-
-                free(base);
-                free(sub);
-
                 anon_mappings[anon_mappings_count].mapped = mapped;
-                anon_mappings[anon_mappings_count].original = path;
+                anon_mappings[anon_mappings_count].original = orig;
+                anon_mappings[anon_mappings_count].userid = user;
+
                 anon_mappings_count++;
                 
-                printf("map: %s → %s\n", mapped, path);
+                printf("map: %s → %s(%s)\n", mapped, orig, user);
             
-                mapped = base = sub = 0;
+                mapped = orig = user = 0;
             }
 
             if(mapped) free(mapped);
-            if(base)   free(base);
-            if(sub)    free(sub);
+            if(orig)   free(orig);
+            if(user)   free(user);
 
             fclose(mapping);
 
+            last_shared_listing_update = 0;
             mapping_last_modification_time = mapping_stat.st_mtime;
         }
         else
         {
-            printf("Anon map is up to date");
+            printf("Anon map is up to date\n");
         }
 
     }
     else
     {
-        printf("Anon mapping file not found");
+        printf("Anon mapping file not found\n");
         return -ENOENT;
     }
     return 0;
@@ -224,8 +227,20 @@ static int _mammut_locate_anondir(char fpath[PATH_MAX], const char *anon_dir)
     {
         if(strcmp(anon_mappings[i].mapped, anon_dir) == 0)
         {
-            strlcpy(fpath, anon_mappings[i].original, PATH_MAX);
-            return 0;
+            for (int j = 0; j < mammut_data.raid_count; j++)
+            {
+                if (PATH_MAX > snprintf(fpath,
+                            PATH_MAX,
+                            "%s/anonymous/%s/%s",
+                            mammut_data.raids[j],
+                            anon_mappings[i].userid,
+                            anon_mappings[i].original)
+                    && access(fpath, F_OK) != -1)
+                {
+                    return 0;
+                }
+            }
+            break;
         }
     }
     return -ENOENT;
@@ -258,6 +273,7 @@ static void _chmod_recursive(const char *path, int mode, int mask)
         }
     }
 }
+
 
 /**
  * Translate the Filesystem-Address (/public/XX, /private, ...) to one of the following:
@@ -388,26 +404,114 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     return 0;
 }
 
-/*
-static int _mammut_parent_writable ( const char *path ) {
-    char modified_path[PATH_MAX];
-    char fpath[PATH_MAX];
-    strlcpy(modified_path, path, sizeof(fpath));
-    char *ptr = strrchr(modified_path, '/');
-    if (ptr != NULL)
-        *ptr = '\0';
-    else 
-        return -EINVAL;
-
-    enum mammut_path_mode mode;
+/**
+ * Updates the shared listing, if required
+ */
+static int _load_shared_listing()
+{
+    _mammut_read_anonymous_mapping(); // this method is efficient and only reads on modification
     
-    int retstat = mammut_fullpath(fpath, modified_path, &mode, 0);
-    if(retstat != 0) return retstat;
-    if (mode != MODE_PIPETHROUGH_RW) return -EPERM;
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+
+    if(last_shared_listing_update + shared_listing_update_rate < tv.tv_sec)
+    {
+        printf("Update shared listing");
+
+        if(shared_listing_buffer_size == 0)
+        {
+            shared_listing_buffer_size = 1024;
+            shared_listing = (char*)malloc(shared_listing_buffer_size); 
+        }
+
+        size_t shared_used = 1;
+
+        for (size_t i = 0; i < mammut_data.raid_count; ++i)
+        {
+            char publicPath[PATH_MAX];
+            DIR *cur_raid;
+            printf("Running raid %s\n", mammut_data.raids[i]);
+
+            strlcpy(publicPath, mammut_data.raids[i], sizeof(publicPath));
+            strlcat(publicPath, "/public", sizeof(publicPath));
+            cur_raid = opendir(publicPath);
+            if(cur_raid != 0)
+            {
+                struct dirent *dirent;
+                
+                for (dirent = readdir(cur_raid); dirent ; dirent = readdir(cur_raid))
+                {
+                    // eat the . and .. of the raid-dirs
+                    if(strncmp(dirent->d_name, ".", 1) == 0 || strncmp(dirent->d_name, "..", 2) == 0)
+                        continue;
+                    
+                    char tmppath[PATH_MAX];
+                    strlcpy(tmppath, publicPath, sizeof(tmppath));
+                    strlcat(tmppath, "/", sizeof(tmppath));
+                    strlcat(tmppath, dirent->d_name, sizeof(tmppath));
+
+                    DIR *test_empty = opendir(tmppath);
+                    if(test_empty == 0) continue;
+
+                    int count;
+                    for(count = 0; count < 3 && readdir(test_empty); count++);
+
+                    closedir(test_empty);
+
+                    if(count < 3) continue;
+
+                    printf("Adding public entry %s\n", dirent->d_name);
+                    
+                    size_t reqsize = shared_used + strlen(dirent->d_name) + 1;
+                    if(reqsize > shared_listing_buffer_size)
+                    {
+                        shared_listing_buffer_size *= 2;
+                        shared_listing = (char *)realloc(shared_listing, shared_listing_buffer_size);
+                        if(shared_listing == 0)
+                        {
+                            shared_listing_buffer_size = 0;
+                            return -ENOMEM;
+                        }
+                    }
+                    
+                    strcpy(shared_listing + (shared_used - 1), dirent->d_name);
+                    
+                    shared_used = reqsize;
+
+                }
+            
+                closedir(cur_raid);
+            }
+        }
+        
+        for (size_t i = 0; i < anon_mappings_count; i++)
+        {
+            printf("Adding anon entry %s\n", anon_mappings[i].mapped);
+            
+            size_t reqsize = shared_used + strlen(anon_mappings[i].mapped) + 1;
+            if(reqsize > shared_listing_buffer_size)
+            {
+                shared_listing_buffer_size *= 2;
+                shared_listing = (char *)realloc(shared_listing, shared_listing_buffer_size);
+                if(shared_listing == 0)
+                {
+                    shared_listing_buffer_size = 0;
+                    return -ENOMEM;
+                }
+            }
+            
+            strcpy(shared_listing + (shared_used - 1), anon_mappings[i].mapped);
+            
+            shared_used = reqsize;
+        }
+
+        shared_listing[shared_used - 1] = 0;
+
+        last_shared_listing_update = tv.tv_sec;
+    }
 
     return 0;
 }
-*/
 
 ///////////////////////////////////////////////////////////
 //
@@ -1054,57 +1158,22 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
             break;
         case MODE_LISTDIR_SHARED:
             printf("\n\nLIST PUBLIC %s\n\n", fPath);
+            retstat = _load_shared_listing();
+            if(retstat != 0) return retstat;
+
             filler(buf, ".", NULL, 0);
             filler(buf, "..", NULL, 0);
-            for (size_t i = 0; i < mammut_data.raid_count; ++i)  {
-                char publicPath[PATH_MAX];
-                DIR *cur_raid;
-                printf("Running raid %s\n", mammut_data.raids[i]);
 
-                strlcpy(publicPath, mammut_data.raids[i], sizeof(publicPath));
-                strlcat(publicPath, "/public", sizeof(publicPath));
-                cur_raid = opendir(publicPath);
-                if(cur_raid != 0)
-                {
-                    struct dirent *dirent;
-                    
-                    for (dirent = readdir(cur_raid); dirent ; dirent = readdir(cur_raid)) {
-                        // eat the . and .. of the raid-dirs
-                        if(strncmp(dirent->d_name, ".", 1) == 0 || strncmp(dirent->d_name, "..", 2) == 0)
-                            continue;
-                        
-                        char tmppath[PATH_MAX];
-                        strlcpy(tmppath, publicPath, sizeof(tmppath));
-                        strlcat(tmppath, "/", sizeof(tmppath));
-                        strlcat(tmppath, dirent->d_name, sizeof(tmppath));
-
-                        DIR *test_empty = opendir(tmppath);
-                        if(test_empty == 0) continue;
-
-                        int count;
-                        for(count = 0; count < 3 && readdir(test_empty); count++);
-
-                        closedir(test_empty);
-
-                        if(count < 3) continue;
-
-                        printf("Adding Entry %s\n", dirent->d_name);
-                        if (filler(buf, dirent->d_name, NULL, 0) != 0)
-                            return -ENOMEM;
-                    }
+            const char *cur;
+            for(cur = shared_listing; cur[0] != 0; cur += strlen(cur) + 1)
+            {
+                if(cur - shared_listing >= shared_listing_buffer_size) break;
                 
-                    closedir(cur_raid);
-                }
-            }
-            
-            _mammut_read_anonymous_mapping(); // this method is efficient and only reads on modification
-            printf("\n\nLIST ANON %s\n\n", fPath);
-            filler(buf, ".", NULL, 0);
-            filler(buf, "..", NULL, 0);
-            for (size_t i = 0; i < anon_mappings_count; i++) {
-                if(filler(buf, anon_mappings[i].mapped, NULL, 0) != 0)
+                if (filler(buf, cur, NULL, 0) != 0)
                     return -ENOMEM;
+
             }
+
             break;
     }
 
