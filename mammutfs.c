@@ -236,22 +236,28 @@ static int _mammut_locate_anondir(char fpath[PATH_MAX], const char *anon_dir)
 /**
  * Recursive chmod, path may be file or directory
  */
-static void _chmod_recursive(const char *path, int mode)
+static void _chmod_recursive(const char *path, int mode, int mask)
 {
-    chmod(path, mode);
-    DIR *dp = opendir(path);
-    if(dp != 0)
+    struct stat st;
+    int s = stat(path, &st);
+    if(s == 0)
     {
-        struct dirent *dirent;
-        for (dirent = readdir(dp); dirent ; dirent = readdir(dp))
+        chmod(path, (st.st_mode & ~mask) | (mode & mask));
+    
+        DIR *dp = opendir(path);
+        if(dp != 0)
         {
-            char sn_path[PATH_MAX];
-            strlcpy(sn_path, path, sizeof(sn_path));
-            strlcat(sn_path, "/", sizeof(sn_path));
-            strlcat(sn_path, dirent->d_name, sizeof(sn_path));
-            _chmod_recursive(sn_path, mode);
+            struct dirent *dirent;
+            for (dirent = readdir(dp); dirent ; dirent = readdir(dp))
+            {
+                char sn_path[PATH_MAX];
+                strlcpy(sn_path, path, sizeof(sn_path));
+                strlcat(sn_path, "/", sizeof(sn_path));
+                strlcat(sn_path, dirent->d_name, sizeof(sn_path));
+                _chmod_recursive(sn_path, mode, mask);
+            }
+            closedir(dp);
         }
-        closedir(dp);
     }
 }
 
@@ -389,6 +395,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     return 0;
 }
 
+/*
 static int _mammut_parent_writable ( const char *path ) {
     char modified_path[PATH_MAX];
     char fpath[PATH_MAX];
@@ -407,6 +414,7 @@ static int _mammut_parent_writable ( const char *path ) {
 
     return 0;
 }
+*/
 
 ///////////////////////////////////////////////////////////
 //
@@ -495,25 +503,7 @@ static int mammut_readlink(const char *path, char *link, size_t size)
     (void)link;
     (void)size;
 
-    mammut_error("Not Implemented Yet\n");
-    return -ENOENT;
-/*
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    enum mammut_path_mode mode;
-    mammut_fullpath(fpath, path, &mode);
-
-    retstat = readlink(fpath, link, size - 1);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_readlink readlink");
-    else  {
-        link[retstat] = '\0';
-        retstat = 0;
-    }
-
-    return retstat;
-*/
+    return -ENOTSUP;
 }
 
 /** Create a file node
@@ -527,40 +517,7 @@ static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
     (void)path;
     (void)mode;
     (void)dev;
-    printf("mknod\n");
-    return -EPERM;
-    /*
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-
-    mammut_path_mode mmode;
-    mammut_fullpath(fpath, path, &mmode);
-
-    // On Linux this could just be 'mknod(path, mode, rdev)' but this
-    //  is more portable
-    if (S_ISREG(mode)) {
-        retstat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
-        if (retstat < 0)
-            retstat = mammut_error("mammut_mknod open");
-        else {
-            retstat = close(retstat);
-            if (retstat < 0)
-                retstat = mammut_error("mammut_mknod close");
-        }
-    } else
-        if (S_ISFIFO(mode)) {
-            retstat = mkfifo(fpath, mode);
-            if (retstat < 0)
-                retstat = mammut_error("mammut_mknod mkfifo");
-        } else {
-            retstat = mknod(fpath, mode, dev);
-            if (retstat < 0)
-                retstat = mammut_error("mammut_mknod mknod");
-        }
-
-    return retstat;
-    */
+    return -ENOTSUP;
 }
 
 /** Create a directory */
@@ -570,21 +527,14 @@ static int mammut_mkdir(const char *path, mode_t mode)
     char fpath[PATH_MAX];
     enum mammut_path_mode mammut_mode;
 
-    retstat = _mammut_parent_writable(path);
-    if(retstat != 0) return retstat;
-
     enum mammut_path_type type;
     retstat = mammut_fullpath(fpath, path, &mammut_mode, &type);
     if(retstat != 0) return retstat;
 
-    if (mammut_mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-
     // prevent inaccessable dirs in public dirs
-    retstat = mkdir(fpath, type == PATH_TYPE_PUBLICDIR ? 0755 : mode);
+    if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005); 
+    
+    retstat = mkdir(fpath, mode);
     if (retstat < 0)
         retstat = mammut_error("mammut_mkdir mkdir");
 
@@ -598,18 +548,8 @@ static int mammut_unlink(const char *path)
     char fpath[PATH_MAX];
     enum mammut_path_mode mode;
 
-    retstat = _mammut_parent_writable(path);
+    retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
-
-    enum mammut_path_type type;
-    retstat = mammut_fullpath(fpath, path, &mode, &type);
-    if(retstat != 0) return retstat;
-
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-    
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
 
     retstat = unlink(fpath);
     if (retstat < 0)
@@ -626,19 +566,9 @@ static int mammut_rmdir(const char *path)
 
     enum mammut_path_mode mode;
 
-    retstat = _mammut_parent_writable(path);
+    retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
 
-    enum mammut_path_type type;
-    retstat = mammut_fullpath(fpath, path, &mode, &type);
-    if(retstat != 0) return retstat;
-
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-    
     retstat = rmdir(fpath);
     if (retstat < 0)
         retstat = mammut_error("mammut_rmdir rmdir");
@@ -657,23 +587,6 @@ static int mammut_symlink(const char *path, const char *link)
     (void)link;
 
     return -ENOTSUP;
-    /*
-    int retstat;
-    char flink[PATH_MAX];
-
-    enum mammut_path_mode mode;
-    if (mammut_fullpath(flink, link, &mode))
-        return -EPERM;
-
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
-    retstat = symlink(path, flink);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_symlink symlink");
-
-    return retstat;
-    */
 }
 
 /** Rename a file */
@@ -686,31 +599,12 @@ static int mammut_rename(const char *path, const char *newpath)
 
     enum mammut_path_mode mode;
 
-    retstat = _mammut_parent_writable(path);
-    if(retstat != 0) return retstat;
-    
-    retstat = _mammut_parent_writable(newpath);
-    if(retstat != 0) return retstat;
-    
     enum mammut_path_type type_orig, type_new;
     retstat = mammut_fullpath(fpath, path, &mode, &type_orig);
     if(retstat != 0) return retstat;
 
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
-    if(type_orig != PATH_TYPE_PUBLICDIR && type_orig != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-
-    
     retstat = mammut_fullpath(fnewpath, newpath, &mode, &type_new);
     if(retstat != 0) return retstat;
-    
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
-    if(type_new != PATH_TYPE_PUBLICDIR && type_new != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
     
     retstat = rename(fpath, fnewpath);
     if (retstat < 0)
@@ -720,7 +614,7 @@ static int mammut_rename(const char *path, const char *newpath)
     else if(type_orig == PATH_TYPE_PRIVATEDIR && type_new == PATH_TYPE_PUBLICDIR)
     {
         //move private -> public => chmod 755
-        _chmod_recursive(newpath, 0755);
+        _chmod_recursive(newpath, 0005, 0007);
     }
 
     return retstat;
@@ -755,21 +649,15 @@ static int mammut_chmod(const char *path, mode_t mode)
     char fpath[PATH_MAX];
     enum mammut_path_mode mammut_mode;
 
-    // If the Parent is not MODE_RW then this is a second-level directory, of which
-    // the mod must not be changed.
-    retstat = _mammut_parent_writable(path);
-    if(retstat != 0) return retstat;
-    
     enum mammut_path_type type;
     retstat = mammut_fullpath(fpath, path, &mammut_mode, &type);
     if(retstat != 0) return retstat;
     
-    if (mammut_mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
-    // no chmod on public dir
-    if(type != PATH_TYPE_PRIVATEDIR)
+    if(type != PATH_TYPE_PRIVATEDIR && type != PATH_TYPE_PUBLICDIR)
        return -EPERM; 
+    
+    // prevent inaccessable dirs in public dirs
+    if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005); 
     
     retstat = chmod(fpath, mode);
     if (retstat < 0)
@@ -785,18 +673,6 @@ static int mammut_chown(const char *path, uid_t uid, gid_t gid)
     (void)uid;
     (void)gid;
     return -EPERM;
-    /*
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    mammut_fullpath(fpath, path);
-
-    retstat = chown(fpath, uid, gid);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_chown chown");
-
-    return retstat;
-    */
 }
 
 /** Change the size of a file */
@@ -813,10 +689,6 @@ static int mammut_truncate(const char *path, off_t newsize)
     retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
     
-    printf("truncate mode: %i\n", mode);
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-    printf("Truncating\n");
     retstat = truncate(fpath, newsize);
     if (retstat < 0)
         mammut_error("mammut_truncate truncate");
@@ -834,9 +706,6 @@ static int mammut_utime(const char *path, struct utimbuf *ubuf)
     enum mammut_path_mode mode;
     retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
-
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
 
     retstat = utime(fpath, ubuf);
     if (retstat < 0)
@@ -864,13 +733,6 @@ static int mammut_open(const char *path, struct fuse_file_info *fi)
 
     retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
-
-    printf("Mode: %i, flags: %i\n", mode, fi->flags);
-    if (mode != MODE_PIPETHROUGH_RW && (fi->flags & O_ACCMODE) != O_RDONLY)
-    {
-        printf("\033[31mOpen Denied throught RW & RDONLY\033[0m\n");
-        return -EPERM;
-    }
 
     fd = open(fpath, fi->flags);
     if (fd < 0)
@@ -1047,100 +909,39 @@ static int mammut_fsync(const char *path, int datasync, struct fuse_file_info *f
 /** Set extended attributes */
 static int mammut_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    enum mammut_path_mode mode;
-    enum mammut_path_type type;
-    
-    retstat = mammut_fullpath(fpath, path &mode, 0);
-    if(retstat != 0)
-        return retstat;
-
-    if (mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-    
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-
-    retstat = lsetxattr(fpath, name, value, size, flags);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_setxattr lsetxattr");
-
-    return retstat;
+    (void)path;
+    (void)name;
+    (void)value;
+    (void)size;
+    (void)flags;
+    return ENOTSUP;
 }
 
 /** Get extended attributes */
 static int mammut_getxattr(const char *path, const char *name, char *value, size_t size)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    enum mammut_path_mode mode;
-    enum mammut_path_type type;
-    
-    retstat = mammut_fullpath(fpath, path, &mode, 0);
-    if(retstat != 0)
-        return retstat;
-    
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-
-    retstat = lgetxattr(fpath, name, value, size);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_getxattr lgetxattr");
-    else
-
-        return retstat;
+    (void)path;
+    (void)name;
+    (void)value;
+    (void)size;
+    return ENOTSUP;
 }
 
 /** List extended attributes */
 static int mammut_listxattr(const char *path, char *list, size_t size)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-    char *ptr;
-
-    enum mammut_path_mode mode;
-    enum mammut_path_type type;
-    
-    retstat = mammut_fullpath(fpath, path, &mode, 0);
-    if(retstat != 0) return retstat;
-    
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-
-    retstat = llistxattr(fpath, list, size);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_listxattr llistxattr");
-
-
-    return retstat;
+    (void)path;
+    (void)list;
+    (void)size;
+    return ENOTSUP;
 }
 
 /** Remove extended attributes */
 static int mammut_removexattr(const char *path, const char *name)
 {
-    int retstat = 0;
-    char fpath[PATH_MAX];
-
-    enum mammut_path_mode mode;
-    enum mammut_path_type type;
-    
-    retstat = mammut_fullpath(fpath, path, &mode, 0);
-    if(retstat != 0) return retstat;
-
-    if(mode != MODE_PIPETHROUGH_RW)
-        return -ENOTSUP;
-
-    if(type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_PRIVATEDIR)
-       return -EPERM; 
-    
-    retstat = lremovexattr(fpath, name);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_removexattr lrmovexattr");
-
-    return retstat;
+    (void)path;
+    (void)list;
+    return ENOTSUP;
 }
 #endif
 
@@ -1447,13 +1248,13 @@ static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *f
     int fd;
 
     enum mammut_path_mode mammut_mode;
+    enum mammut_path_type type;
 
-    retstat = mammut_fullpath(fpath, path, &mammut_mode, 0);
+    retstat = mammut_fullpath(fpath, path, &mammut_mode, &type);
     if(retstat != 0) return retstat;
 
-    if (mammut_mode != MODE_PIPETHROUGH_RW)
-        return -EPERM;
-
+    // prevent inaccessable files in public dirs
+    if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005); 
 
     fd = creat(fpath, mode);
     if (fd < 0)
