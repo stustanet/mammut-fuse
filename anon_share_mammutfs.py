@@ -1,5 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 import fcntl
 import os
 import glob
@@ -23,6 +24,7 @@ def checkpaths_for_dir(dirname, paths):
             return True
 
 def main():
+
     parser = argparse.ArgumentParser(description='Mammut anon lister')
     parser.add_argument('config', metavar='config', help='Anon lister config file')
     parser.add_argument('--reinit', action='store_true', help='Re-initialize the mapping')
@@ -51,7 +53,9 @@ def main():
 
     dirty = False
 
-    # mapping file: <export_name> <userid> <anon_source_dir>
+    # mapping file: <export_name>/<userid>/<anon_source_dir>
+    # NOTE: The '/' is used as seperating charakter and NOT as path delimiter
+
     anon_map = {}
     anon_sources = set()
 
@@ -62,7 +66,7 @@ def main():
         with open(mapfile) as f:
             for line in f:
                 line = line.strip()
-                export_name, userid, orig = line.split()
+                export_name, userid, orig = line.split('/')
 
                 # check if the user and directory is still existing
                 logger.debug("check if %s of %s still exists" % (orig, userid))
@@ -126,7 +130,8 @@ def main():
 
         with open(mapfile + ".new", "w") as f:
             for target, (user, src) in anon_map.items():
-                f.write("%s %s %s\n" % (target, user, src))
+                f.write("%s/%s/%s\n" % (target, user, src))
+
                 logger.debug("%s → %s" % (target, os.path.join(user, src)))
 
         if os.path.isfile(mapfile):
