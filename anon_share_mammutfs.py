@@ -9,8 +9,7 @@ import argparse
 import string
 import random
 import sys
-
-DEBUG = False
+import logging
 
 RANDCHAR = string.ascii_letters + string.digits
 
@@ -27,19 +26,12 @@ def main():
     parser = argparse.ArgumentParser(description='Mammut anon lister')
     parser.add_argument('config', metavar='config', help='Anon lister config file')
     parser.add_argument('--reinit', action='store_true', help='Re-initialize the mapping')
-    parser.add_argument('-debug', default=0, type=int, help='Debug mode (0 Normal, 1 DBG, 2 DVL')
+    parser.add_argument('--verbose', '-v', action='count', default=0, help='Verbose')
     args = parser.parse_args()
 
-    # single instance check
-    #lock = open("/run/anonym_share-mammutfs.lock", 'w')
-    #try:
-    #    fcntl.lockf(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    #except IOError:
-    #    # another instance is running
-    #    print >> sys.stderr, "another instance is already running"
-    #    sys.exit(1)
+    logging.basicConfig(level=logging.WARNING - 10 * args.verbose)
+    logger = logging.getLogger(__name__)
 
-    debug = args.debug
     init_map = args.reinit
 
     with open(args.config) as config_file:
@@ -51,12 +43,11 @@ def main():
     reports_dir     = cfg['reports_dir']
     reports_name    = cfg['reports_name']
 
-    if debug > 0:
-        print('RAIDS:')
-        for r in raids:
-            print("    %s" % r)
-        print("Prefix: %s" % map_prefix)
-        print("Mapping file: %s" % mapfile)
+    logger.info('RAIDS:')
+    for r in raids:
+        logger.info("%s" % r)
+    logger.info("Prefix: %s" % map_prefix)
+    logger.info("Mapping file: %s" % mapfile)
 
     dirty = False
 
@@ -74,23 +65,20 @@ def main():
                 export_name, userid, orig = line.split()
 
                 # check if the user and directory is still existing
-                if debug > 1:
-                    print("check if %s of %s still exists" % (orig, userid))
+                logger.debug("check if %s of %s still exists" % (orig, userid))
 
                 still_valid = False
                 for r in raids: # loop over all raids
                     path_on_raid = os.path.join(r, userid, orig)
 
                     if os.path.isdir(path_on_raid): # check if user dir exists
-                        if debug > 1:
-                            print("OK: path=%s" % path_on_raid)
+                        logger.debug("OK: path=%s" % path_on_raid)
 
                         still_valid = True
                         break
 
                 if not still_valid:
-                    if debug > 0:
-                        print("Removed: %s" % export_name)
+                    logger.info("Removed: %s" % export_name)
 
                     dirty = True
 
@@ -110,9 +98,6 @@ def main():
                 if not os.path.isdir(src_path):
                     continue
 
-                if debug > 1:
-                    print("Dir: " + src_path)
-
                 # TODO: Check if this is still relevant
                 if entry.startswith("new_") or entry.startswith("old_"):
                     continue # user is transfered between raids at the moment
@@ -129,8 +114,7 @@ def main():
                     print >> sys.stderr, "collision!11 please ignore me if it isn't reproducable"
                     continue
 
-                if debug > 0:
-                    print("New anon dir: %s (%s)" % (export_name, src_path))
+                logger.info("New anon dir: %s (%s)" % (export_name, src_path))
 
                 anon_map[export_name] = (user, entry)
                 anon_sources.add(os.path.join(user, entry))
@@ -138,14 +122,12 @@ def main():
                 dirty = True
 
     if dirty:
-        if debug > 0:
-            print("Rewrite anon map: %s, number of mappings: %i" % (mapfile, len(anon_map)))
+        logger.info("Rewrite anon map: %s, number of mappings: %i" % (mapfile, len(anon_map)))
 
         with open(mapfile + ".new", "w") as f:
             for target, (user, src) in anon_map.items():
                 f.write("%s %s %s\n" % (target, user, src))
-                if debug > 1:
-                    print("%s → %s" % (target, os.path.join(user, src)))
+                logger.debug("%s → %s" % (target, os.path.join(user, src)))
 
         if os.path.isfile(mapfile):
             os.rename(mapfile, mapfile + ".old")
@@ -179,5 +161,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-# /srv/anonym in public aufs einfügen
-# anon in create home erstellen
