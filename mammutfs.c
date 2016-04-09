@@ -223,7 +223,7 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
     for (i = 0; i < mammut_data.raid_count; i++)
     {
         if (PATH_MAX > snprintf(fpath, PATH_MAX, "%s/%s/%s", mammut_data.raids[i], subdir, userid)
-            && access(fpath, F_OK) != -1i)
+            && access(fpath, F_OK) == 0)
         {
             fprintf(stderr, "userid: %s, subdir %s fpath: %s\n", userid, subdir, fpath);
             return 0;
