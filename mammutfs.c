@@ -149,7 +149,7 @@ static int _mammut_read_anonymous_mapping()
             char *mapped = 0, *orig = 0, *user = 0;
 
             // whitespace at end eats newline and spaces
-            while(fscanf(mapping, "%m[^/]/%m[^/]/%ms ", &mapped, &user, &orig) == 3)
+            while(fscanf(mapping, "%m[^/]/%m[^/]/%m[^\n] ", &mapped, &user, &orig) == 3)
             {
                 if(anon_mappings_count >= anon_map_buffer_size)
                 {
