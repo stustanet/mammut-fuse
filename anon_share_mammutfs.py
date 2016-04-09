@@ -99,6 +99,9 @@ def main():
 
                 src_path = os.path.join(r, user, entry)
 
+                if os.path.islink(src_path):
+                    continue
+
                 if not os.path.isdir(src_path):
                     continue
 
