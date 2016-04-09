@@ -4,7 +4,17 @@ raids = [
     "/raids/raid1",
     "/raids/raid2"
 ];
-anon_mapping = "/anonmap/anonmap";
-reports_path = "/raids/reports";
+
+dirmap = (
+    { export = "pu"; path = "public"; ispublic = 1;},
+    { export = "pr"; path = "private"; },
+    { export = "ba"; path = "backup"; },
+    { export = "an"; path = "anonymous"; }
+);
+
+anon_mapping = "/raids/mammut-fuse/anonmap";
+shared_export = "shared";
+anon_path = "anonymous";
+public_path = "public";
 anon_user = "nobody";
 
