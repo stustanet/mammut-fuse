@@ -654,8 +654,8 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
             statbuf->st_ino = 999;             // IGNORED inode number
             statbuf->st_mode = S_IFDIR | 0755; // Protection
             statbuf->st_nlink = 0;             // Number of Hard links
-            statbuf->st_uid = geteuid();       // Group ID of owner
-            statbuf->st_gid = getegid();       // User ID of owner
+            statbuf->st_uid = 0;               // root
+            statbuf->st_gid = 0;               // root
             statbuf->st_rdev = 1;
             statbuf->st_size = 1;
             statbuf->st_blksize = 1;           // IGNORED
