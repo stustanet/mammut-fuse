@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/time.h>
@@ -99,12 +100,37 @@ enum mammut_path_type
     PATH_TYPE_PRIVATEDIR
 };
 
-// Report errors to logfile and give -errno to caller
-static int mammut_error(const char *str)
+static enum mammut_log_level
 {
-    int ret = -errno;
-    printf("Error %s\n", str);
-    return ret;
+    LOG_LEVEL_DBG,
+    LOG_LEVEL_VBS,
+    LOG_LEVEL_INF,
+    LOG_LEVEL_WRN,
+    LOG_LEVEL_ERR
+} mammut_logging_level;
+
+static void mammut_log(enum mammut_log_level lvl, const char *format, ...)
+{
+    va_list args;
+    va_start (args, format);
+
+    if(mammut_logging_level <= lvl)
+    {
+        const char *l = "";
+        switch(lvl)
+        {
+            case LOG_LEVEL_DBG: l = "Debug: "; break;
+            case LOG_LEVEL_VBS: l = "Verbose: "; break;
+            case LOG_LEVEL_INF: l = "Info: "; break;
+            case LOG_LEVEL_WRN: l = "Warning: "; break;
+            case LOG_LEVEL_ERR: l = "Error: "; break;
+        }
+
+        printf(l);
+        vprintf(format, args);
+    }
+
+    va_end(args);
 }
 
 static const char *mapping_file_path;
@@ -149,7 +175,7 @@ static int _mammut_read_anonymous_mapping()
 
             if(!mapping)
             {
-                printf("Anon mapping file not found");
+                mammut_log(LOG_LEVEL_ERR, "Anon mapping file not found");
                 return -ENOENT;
             }
 
@@ -174,7 +200,7 @@ static int _mammut_read_anonymous_mapping()
 
                     if(tmp == 0)
                     {
-                        printf("Failed to allocate %i anon map entries.", (int)newsize);
+                        mammut_log(LOG_LEVEL_ERR, "Failed to allocate %i anon map entries.", (int)newsize);
                         free(mapped);
                         free(orig);
                         free(user);
@@ -193,7 +219,7 @@ static int _mammut_read_anonymous_mapping()
 
                 anon_mappings_count++;
 
-                printf("map: %s → %s(%s)\n", mapped, orig, user);
+                mammut_log(LOG_LEVEL_VBS, "map: %s → %s(%s)\n", mapped, orig, user);
 
                 mapped = orig = user = 0;
             }
@@ -209,13 +235,13 @@ static int _mammut_read_anonymous_mapping()
         }
         else
         {
-            printf("Anon map is up to date\n");
+            mammut_log(LOG_LEVEL_VBS, "Anon map is up to date\n");
         }
 
     }
     else
     {
-        printf("Anon mapping file not found\n");
+        mammut_log(LOG_LEVEL_ERR, "Anon mapping file not found\n");
         return -ENOENT;
     }
     return 0;
@@ -234,13 +260,13 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
         if (PATH_MAX > snprintf(fpath, PATH_MAX, "%s/%s/%s", mammut_data.raids[i], subdir, userid)
             && access(fpath, F_OK) == 0)
         {
-            fprintf(stderr, "userid: %s, subdir %s fpath: %s\n", userid, subdir, fpath);
+            mammut_log(LOG_LEVEL_DBG, "userid: %s, subdir %s fpath: %s\n", userid, subdir, fpath);
             return 0;
         }
     }
 ///Locate xfs user filesystem
 
-    fprintf(stderr, "FAIIIIIILL userid: %s, subdir %s last check: %s\n", userid, subdir, fpath);
+    mammut_log(LOG_LEVEL_INF, "FAIIIIIILL userid: %s, subdir %s last check: %s\n", userid, subdir, fpath);
     return -ENOENT;
 }
 
@@ -267,7 +293,7 @@ static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *useri
                     strlcat(fpath, "/", PATH_MAX);
                     strlcat(fpath, mammut_data.dirmap[dm].path, PATH_MAX);
                 }
-                fprintf(stderr, "basemapping: %s\n", fpath);
+                mammut_log(LOG_LEVEL_DBG, "basemapping: %s\n", fpath);
                 return 0;
             }
             else
@@ -277,7 +303,7 @@ static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *useri
         }
     }
 
-    fprintf(stderr, "Dir not mapped: %s\n", subdir);
+    mammut_log(LOG_LEVEL_INF, "Dir not mapped: %s\n", subdir);
     return -ENOENT;
 }
 
@@ -463,7 +489,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         }
     };
 
-    printf("mammut_fullpath: fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
+    mammut_log(LOG_LEVEL_DBG, "mammut_fullpath: fPath: %s last token: %s Mode: %i\n", fpath, token, *mode);
     free(my_path);
     return 0;
 }
@@ -480,7 +506,7 @@ static int _load_shared_listing()
 
     if(last_shared_listing_update + shared_listing_update_rate < tv.tv_sec)
     {
-        printf("Update shared listingi\n");
+        mammut_log(LOG_LEVEL_INF, "Update shared listing\n");
 
         if(shared_listing_buffer_size == 0)
         {
@@ -494,7 +520,7 @@ static int _load_shared_listing()
         {
             char publicPath[PATH_MAX];
             DIR *cur_raid;
-            printf("Running raid %s\n", mammut_data.raids[i]);
+            mammut_log(LOG_LEVEL_VBS, "Running raid %s\n", mammut_data.raids[i]);
 
             strlcpy(publicPath, mammut_data.raids[i], sizeof(publicPath));
             strlcat(publicPath, "/", sizeof(publicPath));
@@ -525,7 +551,7 @@ static int _load_shared_listing()
 
                     if(count < 3) continue;
 
-                    printf("Adding public entry %s\n", dirent->d_name);
+                    mammut_log(LOG_LEVEL_VBS, "Adding public entry %s\n", dirent->d_name);
 
                     size_t reqsize = shared_used + strlen(dirent->d_name) + 1;
                     if(reqsize > shared_listing_buffer_size)
@@ -553,7 +579,7 @@ static int _load_shared_listing()
 
         for (size_t i = 0; i < anon_mappings_count; i++)
         {
-            printf("Adding anon entry %s\n", anon_mappings[i].mapped);
+            mammut_log(LOG_LEVEL_VBS, "Adding anon entry %s\n", anon_mappings[i].mapped);
 
             size_t reqsize = shared_used + strlen(anon_mappings[i].mapped) + 1;
             if(reqsize > shared_listing_buffer_size)
@@ -626,7 +652,7 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
     {
         case MODE_HOMEDIR:
         case MODE_LISTDIR_SHARED:
-            printf("Getattr of homedir\n");
+            mammut_log(LOG_LEVEL_DBG, "Getattr of homedir\n");
             statbuf->st_dev = 0;               // IGNORED Device
             statbuf->st_ino = 999;             // IGNORED inode number
             statbuf->st_mode = S_IFDIR | 0755; // Protection
@@ -645,7 +671,8 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
         case MODE_PIPETHROUGH:
             if ((retstat = lstat(fpath, statbuf)))
             {
-                retstat = mammut_error("mammut_getattr lstat");
+                retstat = -errno;
+                mammut_log(LOG_LEVEL_WRN, "mammut_getattr lstat\n");
             }
             break;
     }
@@ -715,7 +742,10 @@ static int mammut_mkdir(const char *path, mode_t mode)
 
     retstat = mkdir(fpath, mode);
     if (retstat < 0)
-        retstat = mammut_error("mammut_mkdir mkdir");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_mkdir mkdir");
+    }
 
     return retstat;
 }
@@ -732,7 +762,10 @@ static int mammut_unlink(const char *path)
 
     retstat = unlink(fpath);
     if (retstat < 0)
-        retstat = mammut_error("mammut_unlink unlink");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_unlink unlink");
+    }
 
     return retstat;
 }
@@ -750,7 +783,10 @@ static int mammut_rmdir(const char *path)
 
     retstat = rmdir(fpath);
     if (retstat < 0)
-        retstat = mammut_error("mammut_rmdir rmdir");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_rmdir rmdir");
+    }
 
     return retstat;
 }
@@ -793,7 +829,8 @@ static int mammut_rename(const char *path, const char *newpath)
     retstat = rename(fpath, fnewpath);
     if (retstat < 0)
     {
-        retstat = mammut_error("mammut_rename rename");
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_rename rename");
     }
     else if(type_orig == PATH_TYPE_PRIVATEDIR && (type_new == PATH_TYPE_PUBLICDIR || type_new == PATH_TYPE_ANON_DIR))
     {
@@ -811,19 +848,6 @@ static int mammut_link(const char *path, const char *newpath)
     (void)newpath;
 
     return -ENOTSUP;
-    /*
-    int retstat = 0;
-    char fpath[PATH_MAX], fnewpath[PATH_MAX];
-
-    meammut_fullpath(fpath, path, &mode);
-    mammut_fullpath(fnewpath, newpath);
-
-    retstat = link(fpath, fnewpath);
-    if (retstat < 0)
-        retstat = mammut_error("mammut_link link");
-
-    return retstat;
-    */
 }
 
 /** Change the permission bits of a file */
@@ -845,7 +869,10 @@ static int mammut_chmod(const char *path, mode_t mode)
 
     retstat = chmod(fpath, mode);
     if (retstat < 0)
-        retstat = mammut_error("mammut_chmod chmod");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_chmod chmod");
+    }
 
     return retstat;
 }
@@ -866,7 +893,7 @@ static int mammut_truncate(const char *path, off_t newsize)
     char fpath[PATH_MAX];
 
     enum mammut_path_mode mode;
-    printf("truncate src path : %s\n", path);
+    mammut_log(LOG_LEVEL_DBG, "truncate src path : %s\n", path);
 
     retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
@@ -887,7 +914,10 @@ static int mammut_truncate(const char *path, off_t newsize)
 
     retstat = truncate(fpath, newsize);
     if (retstat < 0)
-        mammut_error("mammut_truncate truncate");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_truncate truncate");
+    }
 
     return retstat;
 }
@@ -905,7 +935,10 @@ static int mammut_utime(const char *path, struct utimbuf *ubuf)
 
     retstat = utime(fpath, ubuf);
     if (retstat < 0)
-        retstat = mammut_error("mammut_utime utime");
+    {
+        retstat = -errno;
+         mammut_log(LOG_LEVEL_WRN, "mammut_utime utime");
+    }
 
     return retstat;
 }
@@ -932,10 +965,14 @@ static int mammut_open(const char *path, struct fuse_file_info *fi)
 
     fd = open(fpath, fi->flags);
     if (fd < 0)
-        retstat = mammut_error("mammut_open open");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_open open");
+    }
+
     fi->fh = fd;
 
-    printf("Opening file %s ret: %i fd %i\n", fpath, retstat, fd);
+    mammut_log(LOG_LEVEL_DBG, "Opening file %s ret: %i fd %i\n", fpath, retstat, fd);
 
     return retstat;
 }
@@ -962,7 +999,10 @@ static int mammut_read(const char *path, char *buf, size_t size, off_t offset, s
 
     int retstat = pread(fi->fh, buf, size, offset);
     if (retstat < 0)
-        retstat = mammut_error("mammut_read read");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_read read");
+    }
 
     return retstat;
 }
@@ -985,7 +1025,10 @@ static int mammut_write(const char *path, const char *buf, size_t size, off_t of
 
     retstat = pwrite(fi->fh, buf, size, offset);
     if (retstat < 0)
-        retstat = mammut_error("mammut_write pwrite");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_write pwrite");
+    }
 
     return retstat;
 }
@@ -1009,7 +1052,10 @@ static int mammut_statfs(const char *path, struct statvfs *statv)
     // get stats for underlying filesystem
     retstat = statvfs(fpath, statv);
     if (retstat < 0)
-        retstat = mammut_error("mammut_statfs statvfs");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_statfs statvfs");
+    }
 
     return retstat;
 }
@@ -1096,7 +1142,10 @@ static int mammut_fsync(const char *path, int datasync, struct fuse_file_info *f
         retstat = fsync(fi->fh);
 
     if (retstat < 0)
-        mammut_error("mammut_fsync fsync");
+    {
+        errno = -retstat;
+        mammut_log(LOG_LEVEL_WRN, "mammut_fsync fsync");
+    }
 
     return retstat;
 }
@@ -1150,7 +1199,7 @@ static int mammut_removexattr(const char *path, const char *name)
  */
 static int mammut_opendir(const char *path, struct fuse_file_info *fi)
 {
-    printf("\n\nOpendir %s\n\n", path);
+    mammut_log(LOG_LEVEL_DBG, "Opendir %s\n", path);
     DIR *dp;
     int retstat = 0;
     char fpath[PATH_MAX];
@@ -1169,8 +1218,9 @@ static int mammut_opendir(const char *path, struct fuse_file_info *fi)
             dp = opendir(fpath);
             if (dp == NULL)
             {
-                retstat = mammut_error("mammut_opendir opendir");
-                return -errno;
+                retstat = -errno;
+                mammut_log(LOG_LEVEL_WRN, "mammut_opendir opendir");
+                return retstat;
             }
 
             fi->fh = (intptr_t) dp;
@@ -1237,7 +1287,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
     {
         case MODE_PIPETHROUGH:
         case MODE_PIPETHROUGH_ANON:
-            printf("RO/ROW/ANON Iterating through path %s\n", fPath);
+            mammut_log(LOG_LEVEL_DBG, "RO/ROW/ANON Iterating through path %s\n", fPath);
             {
                 DIR *dp = (DIR *) (uintptr_t) (fi->fh);
 
@@ -1266,7 +1316,6 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
             filler(buf, mammut_data.shared_export_name, NULL, 0);
             break;
         case MODE_LISTDIR_SHARED:
-            printf("\n\nLIST PUBLIC %s\n\n", fPath);
             retstat = _load_shared_listing();
             if(retstat != 0) return retstat;
 
@@ -1430,7 +1479,10 @@ static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *f
 
     fd = creat(fpath, mode);
     if (fd < 0)
-        retstat = mammut_error("mammut_create creat");
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_create creat");
+    }
 
     fi->fh = fd;
 
@@ -1483,7 +1535,7 @@ struct fuse_operations mammut_oper = {
 
 void mammut_usage()
 {
-    fprintf(stderr, "usage:  mammutfs [fuseopts] mountpoint configfile userid\n");
+    fprintf(stderr, "usage:  mammutfs [fuseopts] mountpoint configfile userid [-v]\n");
     exit(EXIT_FAILURE);
 }
 
@@ -1508,6 +1560,18 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Running MAMMUTFS as root opens unnacceptable security holes\n");
         return 1;
     }
+
+    mammut_logging_level = LOG_LEVEL_ERR;
+    if(argc >= 4 && argv[argc - 1][0] == '-')
+    {
+        for(int i = 1; argv[argc - 1][i] == 'v'; i++)
+        {
+            if(mammut_logging_level == 0) break;
+            mammut_logging_level--;
+        }
+        argc--;
+    }
+
     //
     // Perform some sanity checking on the command line:  make sure
     // there are enough arguments
