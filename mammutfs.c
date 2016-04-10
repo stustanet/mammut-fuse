@@ -790,8 +790,6 @@ static int mammut_chown(const char *path, uid_t uid, gid_t gid)
 /** Change the size of a file */
 static int mammut_truncate(const char *path, off_t newsize)
 {
-    //TODO Idee: Limit newsize to 128G?
-
     int retstat = 0;
     char fpath[PATH_MAX];
 
@@ -801,7 +799,7 @@ static int mammut_truncate(const char *path, off_t newsize)
     retstat = mammut_fullpath(fpath, path, &mode, 0);
     if(retstat != 0) return retstat;
     
-    if(newsize > (1 << 31))
+    if(newsize > (1ULL << 31))
     {
        struct stat st;
        if(stat(fpath, &st) != 0)
