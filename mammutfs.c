@@ -1740,9 +1740,19 @@ int main(int argc, char *argv[])
     printf("anonymous user id: %i\n", global_data.anonymous_uid);
     printf("anonymous group id: %i\n", global_data.anonymous_gid);
 
+    char *fuseargs[4];
+    fuseargs[0] = argv[0];
+    int fargc;
+
     if(getuid() == global_data.anonymous_uid)
     {
         mammut_data.userid = 0;
+        
+        fuseargs[1] = "-o";
+        fuseargs[2] = "allow_other";
+        fuseargs[3] = argv[2];
+        fargc = 4;
+
         printf("Using anonymous user\n");
     }
     else
@@ -1760,13 +1770,16 @@ int main(int argc, char *argv[])
             return -1;
         }
     
+        fuseargs[1] = argv[2];
+        fargc = 2;
+        
         mammut_data.userid = strdup(un);
         printf("userid: %s\n", mammut_data.userid);
     }
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
-    fuse_stat = fuse_main(2, argv + 1, &mammut_oper, &mammut_data);
+    fuse_stat = fuse_main(fargc, fuseargs, &mammut_oper, &mammut_data);
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
     return fuse_stat;
