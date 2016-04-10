@@ -56,6 +56,7 @@ struct dirmap_item_st
     int is_public;
     char *export;
     char *path;
+    char *base;
 };
 
 static struct {
@@ -248,12 +249,27 @@ static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *useri
         if(strcmp(subdir, mammut_data.dirmap[dm].export) == 0)
         {
             (*is_public) = mammut_data.dirmap[dm].is_public;
-            
-            return _mammut_locate_userdir(fpath, userid, mammut_data.dirmap[dm].path);
+            if(mammut_data.dirmap[dm].base != 0)
+            {
+                strlcpy(fpath, mammut_data.dirmap[dm].base, PATH_MAX);
+                strlcat(fpath, "/", PATH_MAX);
+                strlcat(fpath, userid, PATH_MAX);
+                if(mammut_data.dirmap[dm].path != 0)
+                {
+                    strlcat(fpath, "/", PATH_MAX);
+                    strlcat(fpath, mammut_data.dirmap[dm].path, PATH_MAX);
+                }
+                fprintf(stderr, "basemapping: %s\n", fpath);
+                return 0;
+            }
+            else
+            {
+                return _mammut_locate_userdir(fpath, userid, mammut_data.dirmap[dm].path);
+            }
         }
     }
 
-    fprintf(stderr, "Dir not mapped: %s", subdir);
+    fprintf(stderr, "Dir not mapped: %s\n", subdir);
     return -ENOENT;
 }
 
@@ -1487,11 +1503,13 @@ int main(int argc, char *argv[])
     for(unsigned int i = 0; i < mammut_data.num_of_dirmaps; i++)
     {
         const config_setting_t *ent = config_setting_get_elem(dirmap, i);
-        const char *path, *export;
+        const char *path = 0, *export = 0, *base = 0;
         if(config_setting_lookup_string(ent, "export", &export) != CONFIG_TRUE ||
-           config_setting_lookup_string(ent, "path", &path) != CONFIG_TRUE)
+           (config_setting_lookup_string(ent, "path", &path) != CONFIG_TRUE &&
+           config_setting_lookup_string(ent, "base", &base) != CONFIG_TRUE))
         {
-            printf("Invalid config: Invalid dirmap entry\n");
+            printf("Invalid config: Invalid dirmap entry!\n");
+            printf("Entry must have \"export\" and (\"path\" or \"base\") defined\n");
             return EXIT_FAILURE;
         }
 
@@ -1505,10 +1523,28 @@ int main(int argc, char *argv[])
             is_public = (is_public != 0) ? 1 : 0;
         }
 
-        printf("Export %s as %s (public: %i)\n", path, export, is_public);
+        printf("Export %s as %s (public: %i)\n", path ? path : base, export, is_public);
 
         mammut_data.dirmap[i].export = strdup(export);
-        mammut_data.dirmap[i].path = strdup(path);
+        
+        if(path)
+        {
+            mammut_data.dirmap[i].path = strdup(path);
+        }
+        else
+        {
+            mammut_data.dirmap[i].path = 0;
+        }
+        
+        if(base)
+        {
+            mammut_data.dirmap[i].base = strdup(base);
+        }
+        else
+        {
+            mammut_data.dirmap[i].base = 0;
+        }
+        
         mammut_data.dirmap[i].is_public = is_public;
     }
 

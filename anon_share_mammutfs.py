@@ -105,6 +105,9 @@ def main():
                 if not os.path.isdir(src_path):
                     continue
 
+                if not os.listdir(src_path): # check if empty
+                    continue
+
                 # TODO: Check if this is still relevant
                 if entry.startswith("new_") or entry.startswith("old_"):
                     continue # user is transfered between raids at the moment

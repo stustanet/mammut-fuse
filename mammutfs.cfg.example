@@ -1,20 +1,37 @@
-# pathes MUST BE absulute pathes
+# This is the MammutFS configuration file
+
+# Following defines the RAIDs, these pathes are used as base pathes
+# for all mappings (including the anon and public mapping)
 raids = [
-    "/raids/raid0",
-    "/raids/raid1",
-    "/raids/raid2"
+    "/srv/raids/raid0",
+    "/srv/raids/raid1",
+    "/srv/raids/raid2"
 ];
 
+# The dirmap defines the export directories (the dirs, the users sees in his root dir)
+# export defines the name in the root dir
+# On the file system the dir sould be located at:
+#     <base>/<userid>/<path>
+#     If base is not defined, all RAIDs are used as possible base pathes
+# if an export ispublic != 0, then the user must not deny read access to "other"
 dirmap = (
-    { export = "pu"; path = "public"; ispublic = 1;},
+    { export = "pu"; path = "public"; ispublic = 1; },
     { export = "pr"; path = "private"; },
     { export = "ba"; path = "backup"; },
-    { export = "an"; path = "anonymous"; }
+    { export = "an"; path = "anonymous"; ispublic = 1; },
+    { export = "re"; base = "/srv/reports"; }
 );
 
-anon_mapping = "/raids/mammut-fuse/anonmap";
+# The path for the anon mapping file
+anon_mapping = "/srv/anonmap";
+
+# The export name for the shared directory
 shared_export = "shared";
+
+# (RAID based) path to the anon and public dir
 anon_path = "anonymous";
 public_path = "public";
+
+# Userid used for stat calls on anon items
 anon_user = "nobody";
 
