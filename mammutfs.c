@@ -51,9 +51,16 @@
 
 config_t cfg;
 
+enum mammut_public_type
+{
+    PUBLIC_NO,
+    PUBLIC_NORMAL,
+    PUBLIC_ANON
+};
+
 struct dirmap_item_st
 {
-    int is_public;
+    enum mammut_public_type type;
     char *export;
     char *path;
     char *base;
@@ -88,6 +95,7 @@ enum mammut_path_type
     PATH_TYPE_ROOT,
     PATH_TYPE_HOMEDIR,
     PATH_TYPE_PUBLICDIR,
+    PATH_TYPE_ANON_DIR,
     PATH_TYPE_PRIVATEDIR
 };
 
@@ -238,9 +246,9 @@ static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, cons
 
 /**
  * Resolves SUBDIR as export path and calls _mammut_locate_userdir
- * is_public returns, if this path is defined as public path
+ * type returns, if this path is defined as public path
  */
-static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *userid, const char *subdir, int *is_public)
+static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *userid, const char *subdir, enum mammut_public_type *type)
 {
 
     size_t dm;
@@ -248,7 +256,7 @@ static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *useri
     {
         if(strcmp(subdir, mammut_data.dirmap[dm].export) == 0)
         {
-            (*is_public) = mammut_data.dirmap[dm].is_public;
+            (*type) = mammut_data.dirmap[dm].type;
             if(mammut_data.dirmap[dm].base != 0)
             {
                 strlcpy(fpath, mammut_data.dirmap[dm].base, PATH_MAX);
@@ -355,7 +363,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     //strcpy(fpath, mammut_data.user_basepath);
     fpath[0] = 0;
 
-    int is_public = 0;
+    enum mammut_public_type pt = PUBLIC_NO;
 
     // Get first path element
     if (!(token = strtok_r(my_path, "/", &saveptr)))
@@ -367,7 +375,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     }
     else if (!strcmp(token, mammut_data.shared_export_name))
     {
-        is_public = 1;
+        pt = PUBLIC_NORMAL;
         *mode = MODE_LISTDIR_SHARED;
         if(type) *type = PATH_TYPE_HOMEDIR;
     }
@@ -379,7 +387,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
             return -ENOENT;
         }
 
-        int retstat = _mammut_locate_mapped_userdir(fpath, mammut_data.userid, token, &is_public);
+        int retstat = _mammut_locate_mapped_userdir(fpath, mammut_data.userid, token, &pt);
         if(retstat != 0)
         {
             //Non-existent entry
@@ -427,7 +435,20 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     }
     else
     {
-        if(type) *type = is_public ? PATH_TYPE_PUBLICDIR : PATH_TYPE_PRIVATEDIR;
+        if(type)
+        {
+            switch(pt)
+            {
+                case PUBLIC_NORMAL:
+                    *type = PATH_TYPE_PUBLICDIR;
+                    break;
+                case PUBLIC_ANON:
+                    *type = PATH_TYPE_ANON_DIR;
+                    break;
+                default:
+                    *type = PATH_TYPE_PRIVATEDIR;
+            }
+        }
         strlcat(fpath, "/", PATH_MAX);
         strlcat(fpath, token, PATH_MAX);
     }
@@ -436,6 +457,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         if (*mode == MODE_PIPETHROUGH
          || *mode == MODE_PIPETHROUGH_ANON)
         {
+            if(type) *type = (pt != PUBLIC_NO) ? PATH_TYPE_PUBLICDIR : PATH_TYPE_PRIVATEDIR;
             strlcat(fpath, "/", PATH_MAX);
             strlcat(fpath, token, PATH_MAX);
         }
@@ -560,6 +582,26 @@ static int _load_shared_listing()
     return 0;
 }
 
+static int _check_name_sanity(const char *name)
+{
+    if(strlen(name) >= 64) return 0;
+    wchar_t uc[64];
+
+    int len = mbstowcs(uc, name, 64);
+    for(int i = 0; i < len; i++)
+    {
+        if(!isprint(uc[i])) return 0;
+    }
+
+    return 1;
+}
+
+static int _is_dir(const char *path)
+{
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+    
+}
 ///////////////////////////////////////////////////////////
 //
 // Prototypes for all these functions, and the C-style comments,
@@ -657,6 +699,9 @@ static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 /** Create a directory */
 static int mammut_mkdir(const char *path, mode_t mode)
 {
+    const char *dn = strrchr(path, '/');
+    if(!_check_name_sanity(dn)) return -EINVAL;
+
     int retstat = 0;
     char fpath[PATH_MAX];
     enum mammut_path_mode mammut_mode;
@@ -666,7 +711,7 @@ static int mammut_mkdir(const char *path, mode_t mode)
     if(retstat != 0) return retstat;
 
     // prevent inaccessable dirs in public dirs
-    if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005);
+    if(type == PATH_TYPE_PUBLICDIR || type == PATH_TYPE_ANON_DIR) mode = ((mode & 0770) | 0005);
 
     retstat = mkdir(fpath, mode);
     if (retstat < 0)
@@ -727,6 +772,9 @@ static int mammut_symlink(const char *path, const char *link)
 // both path and newpath are fs-relative
 static int mammut_rename(const char *path, const char *newpath)
 {
+    const char *dn = strrchr(newpath, '/');
+    if(!_check_name_sanity(dn)) return -EINVAL;
+    
     int retstat = 0;
     char fpath[PATH_MAX];
     char fnewpath[PATH_MAX];
@@ -740,12 +788,14 @@ static int mammut_rename(const char *path, const char *newpath)
     retstat = mammut_fullpath(fnewpath, newpath, &mode, &type_new);
     if(retstat != 0) return retstat;
 
+    if(!_is_dir(fpath) && type_new == PATH_TYPE_ANON_DIR) return -EPERM;
+
     retstat = rename(fpath, fnewpath);
     if (retstat < 0)
     {
         retstat = mammut_error("mammut_rename rename");
     }
-    else if(type_orig == PATH_TYPE_PRIVATEDIR && type_new == PATH_TYPE_PUBLICDIR)
+    else if(type_orig == PATH_TYPE_PRIVATEDIR && (type_new == PATH_TYPE_PUBLICDIR || type_new == PATH_TYPE_ANON_DIR))
     {
         //move private -> public => chmod 755
         _chmod_recursive(newpath, 0005, 0007);
@@ -787,11 +837,11 @@ static int mammut_chmod(const char *path, mode_t mode)
     retstat = mammut_fullpath(fpath, path, &mammut_mode, &type);
     if(retstat != 0) return retstat;
 
-    if(type != PATH_TYPE_PRIVATEDIR && type != PATH_TYPE_PUBLICDIR)
+    if(type != PATH_TYPE_PRIVATEDIR && type != PATH_TYPE_PUBLICDIR && type != PATH_TYPE_ANON_DIR)
        return -EPERM;
 
     // prevent inaccessable items in public and write access on foreign items
-    if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005);
+    if(type == PATH_TYPE_PUBLICDIR || type == PATH_TYPE_ANON_DIR) mode = ((mode & 0770) | 0005);
 
     retstat = chmod(fpath, mode);
     if (retstat < 0)
@@ -1359,6 +1409,9 @@ static int mammut_access(const char *path, int mask)
  */
 static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
+    const char *dn = strrchr(path, '/');
+    if(!_check_name_sanity(dn)) return -EINVAL;
+    
     int retstat = 0;
     char fpath[PATH_MAX];
     int fd;
@@ -1368,6 +1421,9 @@ static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *f
 
     retstat = mammut_fullpath(fpath, path, &mammut_mode, &type);
     if(retstat != 0) return retstat;
+
+    //prevent files in anon
+    if(type == PATH_TYPE_ANON_DIR) return -EPERM;
 
     // prevent inaccessable files in public dirs
     if(type == PATH_TYPE_PUBLICDIR) mode = ((mode & 0770) | 0005);
@@ -1501,6 +1557,31 @@ int main(int argc, char *argv[])
         printf("\t%s\n",mammut_data.raids[i]);
     }
     
+    const char *shared_export_name;
+    if(config_lookup_string(&cfg, "shared_export", &shared_export_name) != CONFIG_TRUE)
+    {
+        printf("Invalid config: \"shared_export\" not found\n");
+        return EXIT_FAILURE;
+    }
+    mammut_data.shared_export_name = strdup(shared_export_name);
+
+    const char *public_path;
+    if(config_lookup_string(&cfg, "public_path", &public_path) != CONFIG_TRUE)
+    {
+        printf("Invalid config: \"public_path\" not found\n");
+        return EXIT_FAILURE;
+    }
+    mammut_data.public_path = strdup(public_path);
+    
+    const char *anon_path;
+    if(config_lookup_string(&cfg, "anon_path", &anon_path) != CONFIG_TRUE)
+    {
+        printf("Invalid config: \"anon_path\" not found\n");
+        return EXIT_FAILURE;
+    }
+    mammut_data.anon_path = strdup(anon_path);
+    
+    
     const config_setting_t *dirmap;
     dirmap = config_lookup(&cfg, "dirmap");
     mammut_data.num_of_dirmaps = config_setting_length(dirmap);
@@ -1526,7 +1607,12 @@ int main(int argc, char *argv[])
         }
         else
         {
-            is_public = (is_public != 0) ? 1 : 0;
+            is_public = (is_public != 0) ? PUBLIC_NORMAL : PUBLIC_NO;
+        }
+
+        if(path != 0 && !strcmp(path, mammut_data.anon_path))
+        {
+            is_public = PUBLIC_ANON;
         }
 
         printf("Export %s as %s (public: %i)\n", path ? path : base, export, is_public);
@@ -1551,33 +1637,9 @@ int main(int argc, char *argv[])
             mammut_data.dirmap[i].base = 0;
         }
         
-        mammut_data.dirmap[i].is_public = is_public;
+        mammut_data.dirmap[i].type = is_public;
     }
 
-    const char *shared_export_name;
-    if(config_lookup_string(&cfg, "shared_export", &shared_export_name) != CONFIG_TRUE)
-    {
-        printf("Invalid config: \"shared_export\" not found\n");
-        return EXIT_FAILURE;
-    }
-    mammut_data.shared_export_name = strdup(shared_export_name);
-
-    const char *public_path;
-    if(config_lookup_string(&cfg, "public_path", &public_path) != CONFIG_TRUE)
-    {
-        printf("Invalid config: \"public_path\" not found\n");
-        return EXIT_FAILURE;
-    }
-    mammut_data.public_path = strdup(public_path);
-    
-    const char *anon_path;
-    if(config_lookup_string(&cfg, "anon_path", &anon_path) != CONFIG_TRUE)
-    {
-        printf("Invalid config: \"anon_path\" not found\n");
-        return EXIT_FAILURE;
-    }
-    mammut_data.anon_path = strdup(anon_path);
-    
     config_destroy(&cfg);
 
 
