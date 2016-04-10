@@ -1770,8 +1770,10 @@ int main(int argc, char *argv[])
             return -1;
         }
     
-        fuseargs[1] = argv[2];
-        fargc = 2;
+        fuseargs[1] = "-o";
+        fuseargs[2] = "allow_root";
+        fuseargs[3] = argv[2];
+        fargc = 4;
         
         mammut_data.userid = strdup(un);
         printf("userid: %s\n", mammut_data.userid);
