@@ -406,6 +406,8 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     else
     {
         if(type) *type = is_public ? PATH_TYPE_PUBLICDIR : PATH_TYPE_PRIVATEDIR;
+        strlcat(fpath, "/", PATH_MAX);
+        strlcat(fpath, token, PATH_MAX);
     }
 
     while((token = strtok_r(NULL, "/", &saveptr))){
