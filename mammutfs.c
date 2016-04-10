@@ -1535,7 +1535,7 @@ struct fuse_operations mammut_oper = {
 
 void mammut_usage()
 {
-    fprintf(stderr, "usage:  mammutfs [fuseopts] mountpoint configfile userid [-v]\n");
+    fprintf(stderr, "usage:  mammutfs none mountpoint [-v]\n");
     exit(EXIT_FAILURE);
 }
 
@@ -1575,10 +1575,10 @@ int main(int argc, char *argv[])
     //
     // Perform some sanity checking on the command line:  make sure
     // there are enough arguments
-    if (argc < 4)
+    if (argc < 3)
         mammut_usage();
 
-    const char *mammutfs_config_file = argv[argc-2];
+    const char *mammutfs_config_file = "/etc/mammutfs/mammutfs.cfg";
 
     // read config file
     config_init(&cfg);
@@ -1707,17 +1707,6 @@ int main(int argc, char *argv[])
     config_destroy(&cfg);
 
 
-    if(strcmp(argv[argc - 1], "0") == 0)
-    {
-        mammut_data.userid = 0;
-        printf("Using anonymous user\n");
-    }
-    else
-    {
-        mammut_data.userid = argv[argc-1];
-        printf("userid: %s\n", mammut_data.userid);
-    }
-
     /*
     char fPath[PATH_MAX];
     if(mammut_data.userid)
@@ -1751,10 +1740,33 @@ int main(int argc, char *argv[])
     printf("anonymous user id: %i\n", global_data.anonymous_uid);
     printf("anonymous group id: %i\n", global_data.anonymous_gid);
 
+    if(getuid() == global_data.anonymous_uid)
+    {
+        mammut_data.userid = 0;
+        printf("Using anonymous user\n");
+    }
+    else
+    {
+        int l = strlen(argv[2]);
+        if(l == 0) return -1;
+
+        if(argv[2][l - 1] == '/') argv[2][l - 1] = 0;
+
+        char *un = strrchr(argv[2], '/');
+        
+        if(un == 0)
+        {
+            printf("invalid mount point: can't parse user id\n");
+            return -1;
+        }
+    
+        mammut_data.userid = strdup(un);
+        printf("userid: %s\n", mammut_data.userid);
+    }
 
     // turn over control to fuse
     fprintf(stderr, "about to call fuse_main\n");
-    fuse_stat = fuse_main(argc-2, argv, &mammut_oper, &mammut_data);
+    fuse_stat = fuse_main(2, argv + 1, &mammut_oper, &mammut_data);
     fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
 
     return fuse_stat;
