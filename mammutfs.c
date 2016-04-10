@@ -610,16 +610,13 @@ static int _load_shared_listing()
 
 static int _check_name_sanity(const char *name)
 {
-    if(strlen(name) >= 64) return 0;
-    wchar_t uc[64];
-
-    int len = mbstowcs(uc, name, 64);
-    for(int i = 0; i < len; i++)
+    for(int i = 0; i < 64; i++)
     {
-        if(!isprint(uc[i])) return 0;
+        if(name[i] == 0) return 1;
+        if(name[i] & 0x80) return 0;
+        if(!isprint(name[i])) return 0;
     }
-
-    return 1;
+    return 0;
 }
 
 static int _is_dir(const char *path)
@@ -726,9 +723,6 @@ static int mammut_mknod(const char *path, mode_t mode, dev_t dev)
 /** Create a directory */
 static int mammut_mkdir(const char *path, mode_t mode)
 {
-    const char *dn = strrchr(path, '/');
-    if(!_check_name_sanity(dn)) return -EINVAL;
-
     int retstat = 0;
     char fpath[PATH_MAX];
     enum mammut_path_mode mammut_mode;
@@ -736,6 +730,12 @@ static int mammut_mkdir(const char *path, mode_t mode)
     enum mammut_path_type type;
     retstat = mammut_fullpath(fpath, path, &mammut_mode, &type);
     if(retstat != 0) return retstat;
+
+    if(type == PATH_TYPE_ANON_DIR)
+    {
+        const char *dn = strrchr(path, '/');
+        if(!_check_name_sanity(dn)) return -EINVAL;
+    }
 
     // prevent inaccessable dirs in public dirs
     if(type == PATH_TYPE_PUBLICDIR || type == PATH_TYPE_ANON_DIR) mode = ((mode & 0770) | 0005);
@@ -808,9 +808,6 @@ static int mammut_symlink(const char *path, const char *link)
 // both path and newpath are fs-relative
 static int mammut_rename(const char *path, const char *newpath)
 {
-    const char *dn = strrchr(newpath, '/');
-    if(!_check_name_sanity(dn)) return -EINVAL;
-    
     int retstat = 0;
     char fpath[PATH_MAX];
     char fnewpath[PATH_MAX];
@@ -824,7 +821,13 @@ static int mammut_rename(const char *path, const char *newpath)
     retstat = mammut_fullpath(fnewpath, newpath, &mode, &type_new);
     if(retstat != 0) return retstat;
 
-    if(!_is_dir(fpath) && type_new == PATH_TYPE_ANON_DIR) return -EPERM;
+    if(type_new == PATH_TYPE_ANON_DIR)
+    {
+        if(!_is_dir(path)) return -EPERM;
+        
+        const char *dn = strrchr(newpath, '/');
+        if(!_check_name_sanity(dn)) return -EINVAL;
+    }
 
     retstat = rename(fpath, fnewpath);
     if (retstat < 0)
@@ -1458,9 +1461,6 @@ static int mammut_access(const char *path, int mask)
  */
 static int mammut_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
-    const char *dn = strrchr(path, '/');
-    if(!_check_name_sanity(dn)) return -EINVAL;
-    
     int retstat = 0;
     char fpath[PATH_MAX];
     int fd;
