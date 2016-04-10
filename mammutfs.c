@@ -373,6 +373,12 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     }
     else
     {
+        if(mammut_data.userid == 0)
+        {
+            free(my_path);
+            return -ENOENT;
+        }
+
         int retstat = _mammut_locate_mapped_userdir(fpath, mammut_data.userid, token, &is_public);
         if(retstat != 0)
         {
@@ -1199,7 +1205,7 @@ static int mammut_readdir(const char *path, void *buf, fuse_fill_dir_t filler, o
         case MODE_HOMEDIR:
             filler(buf, ".", NULL, 0);
             filler(buf, "..", NULL, 0);
-            if(strlen(mammut_data.userid) != 0)
+            if(mammut_data.userid != 0)
             {
                 for(size_t i = 0; i < mammut_data.num_of_dirmaps; i++)
                 {
@@ -1578,7 +1584,7 @@ int main(int argc, char *argv[])
     if(strcmp(argv[argc - 1], "0") == 0)
     {
         mammut_data.userid = 0;
-        printf("Using anonymous user");
+        printf("Using anonymous user\n");
     }
     else
     {
@@ -1600,7 +1606,6 @@ int main(int argc, char *argv[])
     else
     {
         mammut_data.user_basepath = "";
-        mammut_data.userid = "";
     }
     */
 
