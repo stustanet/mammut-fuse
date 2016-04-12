@@ -52,6 +52,10 @@
 
 config_t cfg;
 
+//520 byte per element
+#define SHARED_DIR_CACHE_SIZE 128
+#define SHARED_DIR_CACHE_LIFETIME 60
+
 enum mammut_public_type
 {
     PUBLIC_NO,
@@ -100,6 +104,13 @@ enum mammut_path_type
     PATH_TYPE_PRIVATEDIR
 };
 
+static struct mammut_path_cache_st
+{
+    char path[PATH_MAX];
+    char name[PATH_MAX];
+    time_t last_write;
+} *path_buffer;
+
 static enum mammut_log_level
 {
     LOG_LEVEL_DBG,
@@ -136,6 +147,8 @@ static void mammut_log(enum mammut_log_level lvl, const char *format, ...)
 static const char *mapping_file_path;
 
 static time_t mapping_last_modification_time = 0;
+static time_t mapping_last_check_time = 0;
+static time_t mapping_check_interval = 60;
 
 static struct anon_mapping_st {
     char *mapped;
@@ -150,7 +163,8 @@ static char *shared_listing = 0;
 static size_t shared_listing_buffer_size = 0;
 
 static time_t last_shared_listing_update = 0;
-static time_t shared_listing_update_rate = 60;
+static time_t shared_listing_update_interval = 60;
+
 
 /**
  * reads the anonymous mapping into the datastructure mapping
@@ -159,8 +173,21 @@ static time_t shared_listing_update_rate = 60;
 static int _mammut_read_anonymous_mapping()
 {
     struct stat mapping_stat;
+    
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+    
+    if(mapping_last_check_time + mapping_check_interval > tv.tv_sec)
+    {
+        // do not recheck yet
+        return 0;        
+    }
+
+    mapping_last_check_time = tv.tv_sec;
+
     if(stat(mapping_file_path, &mapping_stat) == 0)
     {
+
         if(mapping_stat.st_mtime != mapping_last_modification_time) // we have to reread
         {
             // free anon_mappings before reallocating...
@@ -248,18 +275,89 @@ static int _mammut_read_anonymous_mapping()
 }
 
 /**
+ * Searches the cache if it contains the path associated with looku
+ * if found the result is written to fpath and a nonzero value is returned
+ * if not found zero is returned and fpath is not modified
+ */
+int _cache_lookup(char fpath[PATH_MAX], const char *lookup)
+{
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+    
+    for(size_t i = 0; i < SHARED_DIR_CACHE_SIZE; i++)
+    {
+        if(path_buffer[i].last_write + SHARED_DIR_CACHE_LIFETIME >= tv.tv_sec)
+        {
+            if(!strcmp(lookup, path_buffer[i].name))
+            {
+                strlcpy(fpath, path_buffer[i].path, PATH_MAX);
+                
+                mammut_log(LOG_LEVEL_DBG, "Cache hit: %s -> %s\n", lookup, fpath);
+                
+                return 1;
+            }
+        }
+    }
+    
+    mammut_log(LOG_LEVEL_DBG, "Cache miss: %s\n", lookup);
+    return 0;
+}
+
+/**
+ * Insert <fpath, lookup> into the cache
+ */
+void _cache_set(const char *fpath, const char *lookup)
+{
+    mammut_log(LOG_LEVEL_DBG, "Add cache entry: %s -> %s\n", lookup, fpath);
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+    
+    size_t oldest = 0;
+    time_t ot = path_buffer[0].last_write;
+
+    for(size_t i = 0; i < SHARED_DIR_CACHE_SIZE; i++)
+    {
+        if(path_buffer[i].last_write + SHARED_DIR_CACHE_LIFETIME < tv.tv_sec)
+        {
+            oldest = i;
+            break;
+        }
+        else if(ot < path_buffer[i].last_write)
+        {
+            ot = path_buffer[i].last_write;
+            oldest = i;
+        }
+    }
+
+    path_buffer[oldest].last_write = tv.tv_sec;
+    strlcpy(path_buffer[oldest].path, fpath, sizeof(path_buffer[oldest].path));
+    strlcpy(path_buffer[oldest].name, lookup, sizeof(path_buffer[oldest].name));
+
+}
+
+/**
  * Search in raids for a RAID/SUBDIR/USERID and write RAID into fpath.
  */
 static int _mammut_locate_userdir(char fpath[PATH_MAX], const char *userid, const char *subdir)
 {
+    char sd[PATH_MAX];
+    if (PATH_MAX > snprintf(sd, PATH_MAX, "%s/%s", subdir, userid))
+    {
+        if(_cache_lookup(fpath, sd)) return 0;
+    }
+    else
+    {
+        return -EINVAL;
+    }
 
     size_t i;
 
     for (i = 0; i < mammut_data.raid_count; i++)
     {
-        if (PATH_MAX > snprintf(fpath, PATH_MAX, "%s/%s/%s", mammut_data.raids[i], subdir, userid)
+        if (PATH_MAX > snprintf(fpath, PATH_MAX, "%s/%s", mammut_data.raids[i], sd)
             && access(fpath, F_OK) == 0)
         {
+            _cache_set(fpath, sd);
             mammut_log(LOG_LEVEL_DBG, "userid: %s, subdir %s fpath: %s\n", userid, subdir, fpath);
             return 0;
         }
@@ -312,22 +410,38 @@ static int _mammut_locate_mapped_userdir(char fpath[PATH_MAX], const char *useri
  */
 static int _mammut_locate_anondir(char fpath[PATH_MAX], const char *anon_dir)
 {
+    
     // lookup mapping from anon_dir to the original directory
     for(size_t i = 0; i < anon_mappings_count; i++)
     {
         if(strcmp(anon_mappings[i].mapped, anon_dir) == 0)
         {
+            char sd[PATH_MAX];
+            if (PATH_MAX > snprintf(sd,
+                        PATH_MAX,
+                        "%s/%s/%s",
+                        mammut_data.anon_path,
+                        anon_mappings[i].userid,
+                        anon_mappings[i].original))
+            {
+                if(_cache_lookup(fpath, sd)) return 0;
+            }
+            else
+            {
+                mammut_log(LOG_LEVEL_WRN, "locate_anondir: path too long\n");
+                return -EINVAL;
+            }
+
             for (int j = 0; j < mammut_data.raid_count; j++)
             {
                 if (PATH_MAX > snprintf(fpath,
                             PATH_MAX,
-                            "%s/%s/%s/%s",
+                            "%s/%s",
                             mammut_data.raids[j],
-                            mammut_data.anon_path,
-                            anon_mappings[i].userid,
-                            anon_mappings[i].original)
+                            sd)
                     && access(fpath, F_OK) != -1)
                 {
+                    _cache_set(fpath, sd);
                     return 0;
                 }
             }
@@ -504,7 +618,7 @@ static int _load_shared_listing()
     struct timeval tv;
     gettimeofday(&tv, 0);
 
-    if(last_shared_listing_update + shared_listing_update_rate < tv.tv_sec)
+    if(last_shared_listing_update + shared_listing_update_interval < tv.tv_sec)
     {
         mammut_log(LOG_LEVEL_INF, "Update shared listing\n");
 
@@ -674,13 +788,9 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
             break;
     }
 
-    if (mode == MODE_PIPETHROUGH_ANON)
-    {
-        // Eliminate all User-IDs from the file
-        statbuf->st_uid = global_data.anonymous_uid;
-        statbuf->st_gid = global_data.anonymous_gid;
-
-    }
+    // Eliminate all User-IDs from the items
+    statbuf->st_uid = global_data.anonymous_uid;
+    statbuf->st_gid = global_data.anonymous_gid;
 
     return retstat;
 }
@@ -699,11 +809,28 @@ static int mammut_getattr(const char *path, struct stat *statbuf)
 // mammut_readlink() code by Bernardo F Costa (thanks!)
 static int mammut_readlink(const char *path, char *link, size_t size)
 {
-    (void)path;
-    (void)link;
-    (void)size;
+    int retstat = 0;
+    char fpath[PATH_MAX];
+    enum mammut_path_mode mode;
+    
+    if(size == 0) return -EINVAL;
+    
+    retstat = mammut_fullpath(fpath, path, &mode, 0);
+    if(retstat != 0) return retstat;
 
-    return -ENOTSUP;
+    retstat = readlink(fpath, link, size - 1);
+    if (retstat < 0)
+    {
+        retstat = -errno;
+        mammut_log(LOG_LEVEL_WRN, "mammut_unlink unlink");
+    }
+    else
+    {
+        link[retstat] = 0;
+        retstat = 0;
+    }
+
+    return retstat;
 }
 
 /** Create a file node
@@ -1561,13 +1688,20 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    int fgmode = 0;
+
     mammut_logging_level = LOG_LEVEL_ERR;
     if(argc >= 4 && argv[argc - 1][0] == '-')
     {
         for(int i = 1; argv[argc - 1][i] == 'v'; i++)
         {
-            if(mammut_logging_level == 0) break;
-            mammut_logging_level--;
+            if(mammut_logging_level != 0) 
+                mammut_logging_level--;
+            
+            if(argv[argc - 1][i + 1] == 'f')
+            {
+                fgmode = 1;
+            }
         }
         argc--;
     }
@@ -1706,6 +1840,12 @@ int main(int argc, char *argv[])
 
     config_destroy(&cfg);
 
+    path_buffer = (struct mammut_path_cache_st *)malloc(
+            SHARED_DIR_CACHE_SIZE * sizeof(struct mammut_path_cache_st));
+    for(int i = 0; i < SHARED_DIR_CACHE_SIZE; i++)
+    {
+        path_buffer[i].last_write = 0;
+    }
 
     /*
     char fPath[PATH_MAX];
@@ -1740,18 +1880,22 @@ int main(int argc, char *argv[])
     printf("anonymous user id: %i\n", global_data.anonymous_uid);
     printf("anonymous group id: %i\n", global_data.anonymous_gid);
 
-    char *fuseargs[4];
+    char *fuseargs[5];
     fuseargs[0] = argv[0];
-    int fargc;
+    int fargc = 1;
+
+    if(fgmode)
+    {
+        fuseargs[fargc++] = "-f";
+    }
 
     if(getuid() == global_data.anonymous_uid)
     {
         mammut_data.userid = 0;
         
-        fuseargs[1] = "-o";
-        fuseargs[2] = "allow_other";
-        fuseargs[3] = argv[2];
-        fargc = 4;
+        fuseargs[fargc++] = "-o";
+        fuseargs[fargc++] = "allow_other";
+        fuseargs[fargc++] = argv[2];
 
         printf("Using anonymous user\n");
     }
@@ -1770,10 +1914,9 @@ int main(int argc, char *argv[])
             return -1;
         }
     
-        fuseargs[1] = "-o";
-        fuseargs[2] = "allow_root";
-        fuseargs[3] = argv[2];
-        fargc = 4;
+        fuseargs[fargc++] = "-o";
+        fuseargs[fargc++] = "allow_root";
+        fuseargs[fargc++] = argv[2];
         
         mammut_data.userid = strdup(un);
         printf("userid: %s\n", mammut_data.userid);
