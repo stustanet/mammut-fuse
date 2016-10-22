@@ -499,7 +499,19 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     char *token;
     char *saveptr;
 
-    *mode = MODE_HOMEDIR;
+    if(mammut_data.userid == NULL)
+    {
+        // no userid -> public mode
+        // => mount point is shared dir
+        *mode = MODE_LISTDIR_SHARED;
+    }
+    else
+    {
+        // userid set -> private mode
+        // use "virtual" home dir
+        *mode = MODE_HOMEDIR;
+    }
+
     //strcpy(fpath, mammut_data.user_basepath);
     fpath[0] = 0;
 
@@ -513,7 +525,8 @@ static int mammut_fullpath(char fpath[PATH_MAX],
         free(my_path);
         return 0;
     }
-    else if (!strcmp(token, mammut_data.shared_export_name))
+    else if (mammut_data.userid == NULL ||
+             !strcmp(token, mammut_data.shared_export_name))
     {
         pt = PUBLIC_NORMAL;
         *mode = MODE_LISTDIR_SHARED;
@@ -521,12 +534,7 @@ static int mammut_fullpath(char fpath[PATH_MAX],
     }
     else
     {
-        if(mammut_data.userid == 0)
-        {
-            free(my_path);
-            return -ENOENT;
-        }
-
+        // mammut_data.userid can not be NULL at this point
         int retstat = _mammut_locate_mapped_userdir(fpath, mammut_data.userid, token, &pt);
         if(retstat != 0)
         {
@@ -540,8 +548,19 @@ static int mammut_fullpath(char fpath[PATH_MAX],
 
     }
 
-    // Check second path element
-    if(!(token = strtok_r(NULL, "/", &saveptr)))
+
+    if(mammut_data.userid != NULL)
+    {
+        // NOT public mode -> check second path element
+        token = strtok_r(NULL, "/", &saveptr);
+    }
+    // else
+    // userid == NULL => public mode
+    // -> In this case, the root dir is the shared dir
+    // => need to check the first path element again
+
+
+    if(!token)
     {
         free(my_path);
         return 0;
