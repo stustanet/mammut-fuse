@@ -1,24 +1,18 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 import fcntl
 import os
 import glob
+import json
+import argparse
 # import subprocess
 import string
 import random
 import sys
+import logging
 
-DEBUG = False
-
-RANDCHAR = string.letters + string.digits
-
-RAIDBASE = "/srv/raids/"
-
-RAIDRELATIVE = "var/anonym"
-
-RAIDS = ('intern0', 'intern1', 'extern0', 'extern1', 'extern2')
-
-SEARCHPATHS = [os.path.join(RAIDBASE, r, RAIDRELATIVE) for r in RAIDS]
+RANDCHAR = string.ascii_letters + string.digits
 
 def sane_filename(fn):
     return len(set(fn).difference(set(string.ascii_letters+string.digits+".-_"))) == 0
@@ -30,113 +24,151 @@ def checkpaths_for_dir(dirname, paths):
             return True
 
 def main():
-    # single instance check
-    lock = open("/run/anonym_share-mammutfs.lock", 'w')
-    try:
-        fcntl.lockf(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
-        # another instance is running
-        print >> sys.stderr, "another instance is already running"
-        sys.exit(1)
 
-    # check if all raids are mounted
-    # for raid in [os.path.join(RAIDBASE, RAID) for RAID in RAIDS]:
-    #     if not os.path.ismount(raid):
-    #         print >> sys.stderr, "the raid %s looks like it is not mounted. will not check anonymous paths as they might change" % (raid)
-    #         sys.exit(1)
+    parser = argparse.ArgumentParser(description='Mammut anon lister')
+    parser.add_argument('config', metavar='config', help='Anon lister config file')
+    parser.add_argument('--reinit', action='store_true', help='Re-initialize the mapping')
+    parser.add_argument('--verbose', '-v', action='count', default=0, help='Verbose')
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.WARNING - 10 * args.verbose)
+    logger = logging.getLogger(__name__)
+
+    init_map = args.reinit
+
+    with open(args.config) as config_file:
+            cfg = json.load(config_file)
+
+    raids           = cfg['anon_dirs']
+    mapfile         = cfg['mapping_file']
+    map_prefix      = cfg['anon_prefix']
+    reports_dir     = cfg['reports_dir']
+    reports_name    = cfg['reports_name']
+
+    logger.info('RAIDS:')
+    for r in raids:
+        logger.info("%s" % r)
+    logger.info("Prefix: %s" % map_prefix)
+    logger.info("Mapping file: %s" % mapfile)
 
     dirty = False
 
-    # a_%name_%random -> %target
+    # mapping file: <export_name>/<userid>/<anon_source_dir>
+    # NOTE: The '/' is used as seperating charakter and NOT as path delimiter
+
     anon_map = {}
     anon_sources = set()
 
-    with open('/srv/anonym.mapping') as f:
-        for line in f:
-            line = line.strip() # thegame_WtF intern0 004445 thegame    # mapping raid user anonym_dir
-            target, raid, user, directory = line.split()
+    if not os.path.isfile(mapfile):
+        init_map = True
 
-            correct_raid = None # intern1
-            # check if the user and directory is still on this raid
-            anon_directory = os.path.join(RAIDBASE, raid, RAIDRELATIVE, user, directory)
-            print "check if %s still maps to %s" % (target, anon_directory)
-            if os.path.isdir(anon_directory):
-                print "path still exists"
-                correct_raid = raid
-                anon_map[target] = (correct_raid, user, directory)
-                anon_sources.add(os.path.join(correct_raid, user, directory))
-            else: # try to find the correct raid for the user
-                dirty = True
-                for RAID in RAIDS: # loop over all raids
-                    if os.path.isdir(os.path.join(RAIDBASE, RAID, RAIDRELATIVE, user)): # check if user dir exists
-                        print "user dir is on raid %s" % RAID
-                        correct_raid = RAID
-                        if os.path.isdir(os.path.join(RAIDBASE, RAID, RAIDRELATIVE, user, directory)): # anonymous directory still exists
-                            print "anonymous directory is still here"
-                            correct_raid = RAID
-                        else:
-                            correct_raid = None
-                if correct_raid is None:
-                    print "directory %s can be deleted" % target
-                    reportfile = os.path.join("/srv/reports/", user, "anonym", directory)
-                    if os.path.isfile(reportfile) and not os.path.islink(reportfile):
-                        os.unlink(reportfile)
+    if not init_map:
+        with open(mapfile) as f:
+            for line in f:
+                line = line.strip()
+                export_name, userid, orig = line.split('/')
+
+                # check if the user and directory is still existing
+                logger.debug("check if %s of %s still exists" % (orig, userid))
+
+                still_valid = False
+                for r in raids: # loop over all raids
+                    path_on_raid = os.path.join(r, userid, orig)
+
+                    if os.path.isdir(path_on_raid): # check if user dir exists
+                        logger.debug("OK: path=%s" % path_on_raid)
+
+                        still_valid = True
+                        break
+
+                if not still_valid:
+                    logger.info("Removed: %s" % export_name)
+
+                    dirty = True
+
                 else:
-                    print "directory %s now maps to the new raid %s" % (target, correct_raid)
-                    anon_map[target] = (correct_raid, user, directory)
-                    anon_sources.add(os.path.join(correct_raid, user, directory))
+                    anon_map[export_name] = (userid, orig)
+                    anon_sources.add(os.path.join(userid, orig))
 
-    for source in glob.iglob("/srv/raids/*/var/anonym/*/*"):
-        base, name = os.path.split(source)
-        anonymbase, user = os.path.split(base)
-        raid = anonymbase.split("/")[3] # TODO: this is ugly
+    for r in raids:
+        for user in os.listdir(r):
+            if not os.path.isdir(os.path.join(r, user)):
+                continue
 
-        if user.startswith("new_") or user.startswith("old_"):
-            continue # user is transfered between raids at the moment
-        if os.path.join(raid, user, name) in anon_sources:
-            continue # this is already mapped
+            for entry in os.listdir(os.path.join(r, user)):
 
-        # TODO: some sanity checks on the directory name... only used in mammutfs.
-        # the mapped directory "thegame_WtF" should be a safe directory as FTP, Apache,Samba etc. are exposed to this
+                src_path = os.path.join(r, user, entry)
 
-        rcode = []
-        for _ in xrange(3):
-            rcode.extend(random.sample(RANDCHAR, 1))
-        rcode = ''.join(rcode)
-        new_name = "%s_%s" % (name, rcode)
-        if new_name in anon_map:
-            print >> sys.stderr, "collision!11 please ignore me if it isn't reproducable"
-            continue
+                if os.path.islink(src_path):
+                    continue
 
-        print "add mapping %s for %s" % (new_name, name)
-        # TODO: what if /srv/reports/001234/anonym
-        userreportfolder = os.path.join("/srv/reports/", user)
-        if not os.path.lexists(userreportfolder):
-            os.mkdir(userreportfolder, 0o775)
-        reportfolder = os.path.join("/srv/reports/", user, 'anonym')
-        if not os.path.lexists(reportfolder):
-            os.mkdir(reportfolder, 0o755)
-        if not os.path.islink(reportfolder) and os.path.isdir(reportfolder):
-            reportfile = os.path.join(reportfolder, name)
-            with open(reportfile, 'w') as reportfilehandle:
-                reportfilehandle.write(new_name+"\n")
-        dirty = True
+                if not os.path.isdir(src_path):
+                    continue
 
-        anon_map[new_name] = (raid, user, name)
-        anon_sources.add(os.path.join(raid, user, name))
+                if not os.listdir(src_path): # check if empty
+                    continue
+
+                # TODO: Check if this is still relevant
+                if entry.startswith("new_") or entry.startswith("old_"):
+                    continue # user is transfered between raids at the moment
+
+                if os.path.join(user, entry) in anon_sources:
+                    continue # this is already mapped
+
+                rcode = []
+                for _ in range(3):
+                    rcode.extend(random.sample(RANDCHAR, 1))
+                rcode = ''.join(rcode)
+                export_name = "%s%s_%s" % (map_prefix, entry, rcode)
+                if export_name in anon_map:
+                    print >> sys.stderr, "collision!11 please ignore me if it isn't reproducable"
+                    continue
+
+                logger.info("New anon dir: %s (%s)" % (export_name, src_path))
+
+                anon_map[export_name] = (user, entry)
+                anon_sources.add(os.path.join(user, entry))
+
+                dirty = True
 
     if dirty:
-        with open("/srv/anonym.mapping.new", "w") as f:
-            for target, (raid, user, directory) in anon_map.iteritems():
-                # assert sane_filename(target) and len(target) < 256
-                # sources = ' '.join([":"+os.path.join(RAIDBASE,r,RAIDRELATIVE,source) for r in RAIDS])
-                f.write("%s %s %s %s\n" % (target, raid, user, directory))
+        logger.info("Rewrite anon map: %s, number of mappings: %i" % (mapfile, len(anon_map)))
 
-        os.rename("/srv/anonym.mapping", "/srv/anonym.mapping.bak")
-        os.rename("/srv/anonym.mapping.new", "/srv/anonym.mapping")
+        with open(mapfile + ".new", "w") as f:
+            for target, (user, src) in anon_map.items():
+                f.write("%s/%s/%s\n" % (target, user, src))
+
+                logger.debug("%s → %s" % (target, os.path.join(user, src)))
+
+        if os.path.isfile(mapfile):
+            os.rename(mapfile, mapfile + ".old")
+
+        os.rename(mapfile + ".new", mapfile)
+
+        usermappings = {}
+        for target, (user, src) in anon_map.items():
+            if not user in usermappings:
+                usermappings[user] = set()
+
+            usermappings[user].add((target, src))
+
+        for r in raids:
+            for user in os.listdir(r):
+                if not os.path.isdir(os.path.join(r, user)):
+                    continue
+
+                if not user in usermappings:
+                    continue
+
+                reportfolder = os.path.join(reports_dir, user)
+                if not os.path.lexists(reportfolder):
+                    os.makedirs(reportfolder, 0o755)
+
+                with open(os.path.join(reportfolder, reports_name), "w") as f:
+                    for export, src in usermappings[user]:
+                        f.write("%s is %s\n" % (src, export))
+
 
 if __name__ == '__main__':
     main()
 
-# /srv/anonym in public aufs einfügen
-# anon in create home erstellen
