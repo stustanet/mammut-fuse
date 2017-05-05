@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import shutil
@@ -24,7 +24,7 @@ payload = "trkihjuhjzudedegftkhzdedefrdexfvrgrdej" # created by a fair roll with
 
 
 if os.access(basepath, os.F_OK):
-    if raw_input("raid exists already. Delete it? (y/n)") == 'y':
+    if input("raid exists already. Delete it? (y/n)") == 'y':
         shutil.rmtree(basepath)
         shutil.rmtree(mntpath)
     else:
@@ -50,8 +50,8 @@ for raid in range(0,raids):
                 os.mkdir(path_dir_anon)
 
             for f in files:
-                temp_file = os.open(path_user + "/" + f + "_" + user, os.O_CREAT | os.O_WRONLY)
-                os.write(temp_file, payload)
+                with open(path_user + "/" + f + "_" + user, "w") as temp_file:
+                    temp_file.write(payload)
 
 
 # mount our fs
@@ -60,5 +60,7 @@ raidstring = ""
 
 for raid in range(0, raids):
     raidstring += raidstring + " " + os.getcwd() + "/raids/raid" + str(raid) # fix this to a format string # fix this to a format string
-print "./mammutfs {} {} -- {}".format(mntpath, testuser, raidstring)
-subprocess.call("./mammutfs {} {} -- {}".format(mntpath, testuser, raidstring))
+call = "./mammutfs {} {} -- {}".format(mntpath, testuser, raidstring)
+print(call)
+subprocess.call(call, shell=True)
+print("done")
