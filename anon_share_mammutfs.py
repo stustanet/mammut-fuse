@@ -17,12 +17,6 @@ RANDCHAR = string.ascii_letters + string.digits
 def sane_filename(fn):
     return len(set(fn).difference(set(string.ascii_letters+string.digits+".-_"))) == 0
 
-def checkpaths_for_dir(dirname, paths):
-    for p in paths:
-        source = os.path.join(p, dirname)
-        if not os.path.islink(source) and os.path.isdir(source):
-            return True
-
 def main():
 
     parser = argparse.ArgumentParser(description='Mammut anon lister')
@@ -99,6 +93,9 @@ def main():
 
                 src_path = os.path.join(r, user, entry)
 
+                if not sane_filename(entry):
+                    continue
+
                 if os.path.islink(src_path):
                     continue
 
@@ -144,6 +141,12 @@ def main():
             os.rename(mapfile, mapfile + ".old")
 
         os.rename(mapfile + ".new", mapfile)
+
+        # clear reports
+        for user in os.listdir(reports_dir):
+            if os.path.isfile(os.path.join(reports_dir, user, reports_name)):
+                logger.debug("Remove old report: %s" % os.path.join(reports_dir, user, reports_name))
+                os.remove(os.path.join(reports_dir, user, reports_name))
 
         usermappings = {}
         for target, (user, src) in anon_map.items():
