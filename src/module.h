@@ -1,5 +1,9 @@
 #pragma once
 
+#include <fuse.h>
+
+#include "mammut_config.h"
+
 namespace mammutfs {
 
 /**
@@ -7,13 +11,41 @@ namespace mammutfs {
  */
 class Module {
 public:
+	Module (std::shared_ptr<MammutConfig> config);
+
+	enum class LOG_LEVEL {
+		TRACE,
+		INFO,
+		WRN,
+		ERR
+	};
+	void log(LOG_LEVEL lvl, const std::string &msg);
+	void trace(const std::string &method,
+	           const std::string &path,
+	           const std::string &second_path = "");
+
+	/** Translate a path for normal mammut operation
+	 *
+	 * A normal Path is /module/path.
+	 */
+	virtual int translatepath(const std::string &path, std::string &out) = 0;
+
+	/** Locates a user on a raid
+	 *
+	 * locates a user on a raid for a given module.
+	 */
+	virtual std::string find_raid(const std::string &user, const std::string &module) = 0;
+
+	virtual bool visible_in_root() { return true; }
+
+
 	/** Get file attributes.
 	 *
 	 * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
-	 * ignored.	 The 'st_ino' field is ignored except if the 'use_ino'
+	 * ignored. The 'st_ino' field is ignored except if the 'use_ino'
 	 * mount option is given.
 	 */
-	int getattr(const char *, struct stat *);
+	virtual int getattr(const char *, struct stat *);
 
 	/** Read the target of a symbolic link
 	 *
@@ -23,7 +55,7 @@ public:
 	 * buffer, it should be truncated.	The return value should be 0
 	 * for success.
 	 */
-	int readlink(const char *, char *, size_t);
+	virtual int readlink(const char *, char *, size_t);
 
 	/* Deprecated, use readdir() instead */
 	int getdir(const char *, fuse_dirh_t, fuse_dirfil_t);
@@ -34,7 +66,7 @@ public:
 	 * nodes.  If the filesystem defines a create() method, then for
 	 * regular files that will be called instead.
 	 */
-	int mknod(const char *, mode_t, dev_t);
+	virtual int mknod(const char *, mode_t, dev_t);
 
 	/** Create a directory
 	 *
@@ -42,37 +74,28 @@ public:
 	 * bits set, i.e. S_ISDIR(mode) can be false.  To obtain the
 	 * correct directory type bits use  mode|S_IFDIR
 	 * */
-	int mkdir(const char *, mode_t);
+	virtual int mkdir(const char *, mode_t);
 
 	/** Remove a file */
-	int unlink(const char *);
+	virtual int unlink(const char *);
 
 	/** Remove a directory */
-	int rmdir(const char *);
+	virtual int rmdir(const char *);
 
 	/** Create a symbolic link */
-	int symlink(const char *, const char *);
+	virtual int symlink(const char *, const char *);
 
 	/** Rename a file */
-	int rename(const char *, const char *);
-
-	/** Create a hard link to a file */
-	int link(const char *, const char *);
+	virtual int rename(const char *, const char *);
 
 	/** Change the permission bits of a file */
-	int chmod(const char *, mode_t);
+	virtual int chmod(const char *, mode_t);
 
 	/** Change the owner and group of a file */
-	int chown(const char *, uid_t, gid_t);
+	virtual int chown(const char *, uid_t, gid_t);
 
 	/** Change the size of a file */
-	int truncate(const char *, off_t);
-
-	/** Change the access and/or modification times of a file
-	 *
-	 * Deprecated, use utimens() instead.
-	 */
-	int utime(const char *, struct utimbuf *);
+	virtual int truncate(const char *, off_t);
 
 	/** File open operation
 	 *
@@ -91,7 +114,7 @@ public:
 	 *
 	 * Changed in version 2.2
 	 */
-	int open(const char *, struct fuse_file_info *);
+	virtual int open(const char *, struct fuse_file_info *);
 
 	/** Read data from an open file
 	 *
@@ -104,7 +127,7 @@ public:
 	 *
 	 * Changed in version 2.2
 	 */
-	int read(const char *, char *, size_t, off_t,
+	virtual int read(const char *, char *, size_t, off_t,
 	         struct fuse_file_info *);
 
 	/** Write data to an open file
@@ -115,7 +138,7 @@ public:
 	 *
 	 * Changed in version 2.2
 	 */
-	int write(const char *, const char *, size_t, off_t,
+	virtual int write(const char *, const char *, size_t, off_t,
 	          struct fuse_file_info *);
 
 	/** Get file system statistics
@@ -125,7 +148,7 @@ public:
 	 * Replaced 'struct statfs' parameter with 'struct statvfs' in
 	 * version 2.5
 	 */
-	int statfs(const char *, struct statvfs *);
+	virtual int statfs(const char *, struct statvfs *);
 
 	/** Possibly flush cached data
 	 *
@@ -150,7 +173,7 @@ public:
 	 *
 	 * Changed in version 2.2
 	 */
-	int flush(const char *, struct fuse_file_info *);
+	virtual int flush(const char *, struct fuse_file_info *);
 
 	/** Release an open file
 	 *
@@ -166,7 +189,7 @@ public:
 	 *
 	 * Changed in version 2.2
 	 */
-	int release(const char *, struct fuse_file_info *);
+	virtual int release(const char *, struct fuse_file_info *);
 
 	/** Synchronize file contents
 	 *
@@ -175,19 +198,19 @@ public:
 	 *
 	 * Changed in version 2.2
 	 */
-	int fsync(const char *, int, struct fuse_file_info *);
+	virtual int fsync(const char *, int, struct fuse_file_info *);
 
 	/** Set extended attributes */
-	int setxattr(const char *, const char *, const char *, size_t, int);
+	virtual int setxattr(const char *, const char *, const char *, size_t, int);
 
 	/** Get extended attributes */
-	int getxattr(const char *, const char *, char *, size_t);
+	virtual int getxattr(const char *, const char *, char *, size_t);
 
 	/** List extended attributes */
-	int listxattr(const char *, char *, size_t);
+	virtual int listxattr(const char *, char *, size_t);
 
 	/** Remove extended attributes */
-	int removexattr(const char *, const char *);
+	virtual int removexattr(const char *, const char *);
 
 	/** Open directory
 	 *
@@ -199,9 +222,11 @@ public:
 	 *
 	 * Introduced in version 2.3
 	 */
-	int opendir(const char *, struct fuse_file_info *);
+	virtual int opendir(const char *, struct fuse_file_info *);
 
 	/** Read directory
+	 *
+	 * Mammutfs: Lists all files from the translated target directory
 	 *
 	 * This supersedes the old getdir() interface.  New applications
 	 * should use this.
@@ -222,14 +247,14 @@ public:
 	 *
 	 * Introduced in version 2.3
 	 */
-	int readdir(const char *, void *, fuse_fill_dir_t, off_t,
-	            struct fuse_file_info *);
+	virtual int readdir(const char *, void *, fuse_fill_dir_t, off_t,
+	                    struct fuse_file_info *);
 
 	/** Release directory
 	 *
 	 * Introduced in version 2.3
 	 */
-	int releasedir(const char *, struct fuse_file_info *);
+	virtual int releasedir(const char *, struct fuse_file_info *);
 
 	/** Synchronize directory contents
 	 *
@@ -238,28 +263,7 @@ public:
 	 *
 	 * Introduced in version 2.3
 	 */
-	int fsyncdir(const char *, int, struct fuse_file_info *);
-
-	/**
-	 * Initialize filesystem
-	 *
-	 * The return value will passed in the private_data field of
-	 * fuse_context to all file operations and as a parameter to the
-	 * destroy() method.
-	 *
-	 * Introduced in version 2.3
-	 * Changed in version 2.6
-	 */
-	void *init(struct fuse_conn_info *conn);
-
-	/**
-	 * Clean up filesystem
-	 *
-	 * Called on filesystem exit.
-	 *
-	 * Introduced in version 2.3
-	 */
-	void destroy(void *);
+	virtual int fsyncdir(const char *, int, struct fuse_file_info *);
 
 	/**
 	 * Check file access permissions
@@ -272,7 +276,7 @@ public:
 	 *
 	 * Introduced in version 2.5
 	 */
-	int access(const char *, int);
+	virtual int access(const char *, int);
 
 	/**
 	 * Create and open a file
@@ -286,70 +290,7 @@ public:
 	 *
 	 * Introduced in version 2.5
 	 */
-	int create(const char *, mode_t, struct fuse_file_info *);
-
-	/**
-	 * Change the size of an open file
-	 *
-	 * This method is called instead of the truncate() method if the
-	 * truncation was invoked from an ftruncate() system call.
-	 *
-	 * If this method is not implemented or under Linux kernel
-	 * versions earlier than 2.6.15, the truncate() method will be
-	 * called instead.
-	 *
-	 * Introduced in version 2.5
-	 */
-	int ftruncate(const char *, off_t, struct fuse_file_info *);
-
-	/**
-	 * Get attributes from an open file
-	 *
-	 * This method is called instead of the getattr() method if the
-	 * file information is available.
-	 *
-	 * Currently this is only called after the create() method if that
-	 * is implemented (see above).  Later it may be called for
-	 * invocations of fstat() too.
-	 *
-	 * Introduced in version 2.5
-	 */
-	int fgetattr(const char *, struct stat *, struct fuse_file_info *);
-
-	/**
-	 * Perform POSIX file locking operation
-	 *
-	 * The cmd argument will be either F_GETLK, F_SETLK or F_SETLKW.
-	 *
-	 * For the meaning of fields in 'struct flock' see the man page
-	 * for fcntl(2).  The l_whence field will always be set to
-	 * SEEK_SET.
-	 *
-	 * For checking lock ownership, the 'fuse_file_info->owner'
-	 * argument must be used.
-	 *
-	 * For F_GETLK operation, the library will first check currently
-	 * held locks, and if a conflicting lock is found it will return
-	 * information without calling this method.	 This ensures, that
-	 * for local locks the l_pid field is correctly filled in.	The
-	 * results may not be accurate in case of race conditions and in
-	 * the presence of hard links, but it's unlikely that an
-	 * application would rely on accurate GETLK results in these
-	 * cases.  If a conflicting lock is not found, this method will be
-	 * called, and the filesystem may fill out l_pid by a meaningful
-	 * value, or it may leave this field zero.
-	 *
-	 * For F_SETLK and F_SETLKW the l_pid field will be set to the pid
-	 * of the process performing the locking operation.
-	 *
-	 * Note: if this method is not implemented, the kernel will still
-	 * allow file locking to work locally.  Hence it is only
-	 * interesting for network filesystems and similar.
-	 *
-	 * Introduced in version 2.6
-	 */
-	int lock(const char *, struct fuse_file_info *, int cmd,
-	         struct flock *);
+	virtual int create(const char *, mode_t, struct fuse_file_info *);
 
 	/**
 	 * Change the access and modification times of a file with
@@ -362,7 +303,11 @@ public:
 	 *
 	 * Introduced in version 2.6
 	 */
-	int utimens(const char *, const struct timespec tv[2]);
+	virtual int utimens(const char *, const struct timespec tv[2]);
+
+protected:
+	std::shared_ptr<MammutConfig> config;
+	std::shared_ptr<ModuleResolver> resolver;
 };
 
 } // mammutfs
