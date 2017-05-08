@@ -29,8 +29,6 @@ public:
 	std::shared_ptr<ModuleResolver> resolver;
 
 	std::list<std::string> raids;
-	std::string anon_dir;
-
 	bool deamonize;
 	uint64_t truncate_max_size;
 	std::string anon_username;

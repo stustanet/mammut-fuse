@@ -9,14 +9,51 @@
 
 namespace mammutfs {
 
-Module::Module(std::shared_ptr<MammutConfig> config) :
-	config(config) {
+Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config) :
+	config(config), modname(modname) {
 	trace ("tomate", "test");
 }
 
 
+int Module::translatepath(const std::string &path, std::string &out) {
+	std::string basepath;
+	int retval = find_raid(basepath);
+
+	out = basepath + path;
+	std::cout << "PATH: " << out << std::endl;
+	return retval;
+}
+
+int Module::find_raid(std::string &path) {
+	if (basepath != "") {
+		path = basepath;
+		return 0;
+	}
+
+	for (const auto &raid : config->raids) {
+		std::string to_test = raid + "/" + modname + "/" + config->username;
+
+		this->log(LOG_LEVEL::INFO, std::string("Testing raid " + to_test));
+		struct stat statbuf;
+		int retval = stat(to_test.c_str(), &statbuf);
+
+		if (retval == 0) {
+			this->log(LOG_LEVEL::INFO, std::string("Found raid at " + to_test));
+			basepath = to_test;
+			break;
+		}
+	}
+	if (basepath == "") {
+		this->log(LOG_LEVEL::ERR, "Could not find Raid!! THIS IS BAD!");
+		return -ENOENT;
+	}
+
+	path = basepath;
+	return 0;
+}
+
 void Module::log(LOG_LEVEL lvl, const std::string &msg) {
-	std::cout << msg << std::endl;
+	std::cout << "[" << modname << "] " << msg << std::endl;
 }
 
 void Module::trace(const std::string &method,
@@ -29,14 +66,19 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 	this->trace("getattr", path);
 
 	if (strcmp(path, "/") == 0) {
-		this->trace("getattr", "defaulting");
-		std::cout << config->user_uid << std::endl;
-		statbuf->st_mode = 0555;
-		statbuf->st_uid = config->user_uid;
-		statbuf->st_gid = config->user_gid;
-		statbuf->st_atime = 0;
-		statbuf->st_mtime = 0;
-		statbuf->st_ctime = 0;
+		statbuf->st_dev         = 0;               // IGNORED Device
+		statbuf->st_ino         = 999;             // IGNORED inode number
+		statbuf->st_mode        = S_IFDIR | 0755;  // Protection
+		statbuf->st_nlink       = 0;               // Number of Hard links
+		statbuf->st_uid         = config->user_uid;
+		statbuf->st_gid         = config->user_gid;
+		statbuf->st_rdev        = 0;
+		statbuf->st_size        = 0;
+		statbuf->st_blksize     = 0;  // IGNORED
+		statbuf->st_blocks      = 0;
+		statbuf->st_atim.tv_sec = 0;  // Last Access
+		statbuf->st_mtim.tv_sec = 0;  // Last Modification
+		statbuf->st_ctim.tv_sec = 0;  // Last Status change
 		return 0;
 	}
 

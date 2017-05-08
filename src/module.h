@@ -11,7 +11,7 @@ namespace mammutfs {
  */
 class Module {
 public:
-	Module (std::shared_ptr<MammutConfig> config);
+	Module (const std::string &modname, std::shared_ptr<MammutConfig> config);
 
 	enum class LOG_LEVEL {
 		TRACE,
@@ -19,6 +19,7 @@ public:
 		WRN,
 		ERR
 	};
+
 	void log(LOG_LEVEL lvl, const std::string &msg);
 	void trace(const std::string &method,
 	           const std::string &path,
@@ -28,13 +29,13 @@ public:
 	 *
 	 * A normal Path is /module/path.
 	 */
-	virtual int translatepath(const std::string &path, std::string &out) = 0;
+	virtual int translatepath(const std::string &path, std::string &out);
 
 	/** Locates a user on a raid
 	 *
 	 * locates a user on a raid for a given module.
 	 */
-	virtual std::string find_raid(const std::string &user, const std::string &module) = 0;
+	virtual int find_raid(std::string &path);
 
 	virtual bool visible_in_root() { return true; }
 
@@ -307,7 +308,8 @@ public:
 
 protected:
 	std::shared_ptr<MammutConfig> config;
-	std::shared_ptr<ModuleResolver> resolver;
+	std::string modname;
+	std::string basepath;
 };
 
 } // mammutfs

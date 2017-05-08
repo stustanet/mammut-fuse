@@ -49,6 +49,14 @@ MammutConfig::MammutConfig(const char *filename,
 		}
 	}
 
+	auto &settings_raid = config->lookup("raids");
+	for (auto it = settings_raid.begin(); it != settings_raid.end(); ++it) {
+		raids.push_back(*it);
+	}
+	for (const auto &e : raids) {
+		std::cout << "Using RAID: " << e << std::endl;
+	}
+
 	lookupValue("mountpoint", mountpoint);
 	lookupValue("deamonize", deamonize);
 	lookupValue("truncate_maxsize", truncate_max_size);
