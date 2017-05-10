@@ -18,14 +18,15 @@ int main(int argc, char **argv) {
 	                                                       argc,
 	                                                       argv,
 	                                                       resolver);
+	auto communicator = std::make_shared<mammutfs::Communicator>(config);
 
 	/// Add all Modules to the following list
 	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config));
 	resolver->registerModule("private", std::make_shared<mammutfs::Private>(config));
-	resolver->registerModule("public", std::make_shared<mammutfs::Public>(config));
-	resolver->registerModule("anonymous", std::make_shared<mammutfs::Anonymous>(config));
+	resolver->registerModule("public", std::make_shared<mammutfs::Public>(config, communicator));
+	resolver->registerModule("anonymous", std::make_shared<mammutfs::Anonymous>(config, communicator));
 	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config));
-	resolver->registerModule("lister", std::make_shared<mammutfs::PublicAnonLister>(config));
+	resolver->registerModule("lister", std::make_shared<mammutfs::PublicAnonLister>(config, communicator));
 
 	config->filterModules(resolver);
 

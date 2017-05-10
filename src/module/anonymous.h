@@ -8,8 +8,12 @@ namespace mammutfs {
 
 class Anonymous : public Module {
 public:
-	Anonymous (std::shared_ptr<MammutConfig> config) :
-		Module("anonymous", config) {}
+	Anonymous (std::shared_ptr<MammutConfig> config, std::shared_ptr<Communicator> comm) :
+		Module("anonymous", config),
+		comm(comm) {}
+
+private:
+	std::shared_ptr<Communicator> comm;
 };
 
 }
