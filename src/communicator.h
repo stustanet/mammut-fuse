@@ -59,10 +59,14 @@ private:
 
 	void execute_command(std::string cmd);
 
+	void remove_client(int socket);
+
 	std::shared_ptr<MammutConfig> config;
 
-	int socketfd;
 	int connect_socket;
+	int pollingfd;
+	std::vector<int> connected_sockets;
+
 
 	std::map<std::string, command_callback> commands;
 

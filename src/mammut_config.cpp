@@ -61,6 +61,7 @@ MammutConfig::MammutConfig(const char *filename,
 	lookupValue("deamonize", deamonize);
 	lookupValue("truncate_maxsize", truncate_max_size);
 	lookupValue("anon_user_name", anon_username);
+	lookupValue("anon_mapping_file", anon_mapping_file);
 	lookupValue("username", username);
 
 

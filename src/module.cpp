@@ -11,7 +11,6 @@ namespace mammutfs {
 
 Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config) :
 	config(config), modname(modname) {
-	trace ("tomate", "test");
 }
 
 
@@ -84,13 +83,13 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 
 	int retstat = 0;
 	std::string translated;
-	if ((retstat = this->translatepath(path, translated))) {
-		this->log(LOG_LEVEL::WRN, "translatepath lstat\n");
+	if ((retstat = this->translatepath(path, translated)) != 0) {
+		this->log(LOG_LEVEL::WRN, "getattr - translatepath");
 	} else {
 		retstat = lstat(translated.c_str(), statbuf);
 		if (retstat) {
 			retstat = -errno;
-			this->log(LOG_LEVEL::WRN, "mammut_getattr lstat\n");
+			this->log(LOG_LEVEL::WRN, "mammut_getattr lstat");
 		}
 	}
 

@@ -34,6 +34,7 @@ public:
 	std::string anon_username;
 	std::string username;
 	std::string mountpoint;
+	std::string anon_mapping_file;
 
 	uint16_t anon_uid;
 	uint16_t anon_gid;
