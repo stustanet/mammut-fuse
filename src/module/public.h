@@ -29,9 +29,10 @@ public:
 	}
 
 	virtual int rename(const char *a, const char *b) {
-		Module::rename(a, b):
+		Module::rename(a, b);
 		std::string from = a;
-		from += " -> " + b;
+		from += " -> ";
+		from += b;
 		inotify("RENAME", from);
 	}
 

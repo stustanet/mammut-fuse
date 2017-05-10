@@ -17,9 +17,7 @@ Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config)
 int Module::translatepath(const std::string &path, std::string &out) {
 	std::string basepath;
 	int retval = find_raid(basepath);
-
 	out = basepath + path;
-	std::cout << "PATH: " << out << std::endl;
 	return retval;
 }
 
