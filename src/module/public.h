@@ -6,7 +6,7 @@
 #include "../communicator.h"
 
 namespace mammutfs {
- 
+
 class Public : public Module {
 public:
 	Public (std::shared_ptr<MammutConfig> config, std::shared_ptr<Communicator> comm) :
@@ -54,8 +54,8 @@ public:
 protected:
 	void inotify(const std::string &name, const std::string &path) {
 		std::string translated;
-		translatepath(path, translated);
-		comm->inotify(name, translated);
+		this->translatepath(path, translated);
+		this->comm->inotify(name, translated);
 	}
 private:
 	std::shared_ptr<Communicator> comm;

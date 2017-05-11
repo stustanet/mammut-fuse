@@ -84,7 +84,7 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 	if ((retstat = this->translatepath(path, translated)) != 0) {
 		this->log(LOG_LEVEL::WRN, "getattr - translatepath");
 	} else {
-		retstat = lstat(translated.c_str(), statbuf);
+		retstat = ::lstat(translated.c_str(), statbuf);
 		if (retstat) {
 			retstat = -errno;
 			this->log(LOG_LEVEL::WRN, "mammut_getattr lstat");
@@ -109,7 +109,7 @@ int Module::readlink(const char *path, char *link, size_t size) {
 	std::string translated;
 	retstat = this->translatepath(path, translated);
 
-	retstat = readlink(translated.c_str(), link, size - 1);
+	retstat = ::readlink(translated.c_str(), link, size - 1);
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
@@ -143,7 +143,7 @@ int Module::mkdir(const char *path, mode_t mode) {
 		return retstat;
 	}
 
-	if ((retstat = mkdir(translated.c_str(), mode)) < 0) {
+	if ((retstat = ::mkdir(translated.c_str(), mode)) < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_mkdir mkdir");
 	}
@@ -161,7 +161,7 @@ int Module::unlink(const char *path) {
 		return retstat;
 	}
 
-	if ((retstat = unlink(translated.c_str()))) {
+	if ((retstat = ::unlink(translated.c_str()))) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
 	}
@@ -179,7 +179,7 @@ int Module::rmdir(const char *path) {
 		return retstat;
 	}
 
-	if ((retstat = rmdir(translated.c_str()))) {
+	if ((retstat = ::rmdir(translated.c_str()))) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
 	}
@@ -204,7 +204,7 @@ int Module::rename(const char *realpath, const char *newpath) {
 		return retstat;
 	}
 
-	if ((retstat = rename(realpath, translated.c_str())) < 0) {
+	if ((retstat = ::rename(realpath, translated.c_str())) < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_rename rename");
 	}
@@ -221,7 +221,7 @@ int Module::chmod(const char *path, mode_t mode) {
 		return retstat;
 	}
 
-	if ((retstat = chmod(translated.c_str(), mode)) < 0) {;
+	if ((retstat = ::chmod(translated.c_str(), mode)) < 0) {;
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_chmod chmod");
 	}
@@ -257,7 +257,7 @@ int Module::truncate(const char *path, off_t newsize) {
 		}
 	}
 
-	retstat = truncate(translated.c_str(), newsize);
+	retstat = ::truncate(translated.c_str(), newsize);
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_truncate truncate");
@@ -293,7 +293,7 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 	this->trace("read", path);
 
 	// Take fd from fi->fh
-	int retstat = pread(fi->fh, buf, size, offset);
+	int retstat = ::pread(fi->fh, buf, size, offset);
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_read read");
@@ -308,7 +308,7 @@ int Module::write(const char *path, const char *buf, size_t size, off_t offset,
 	this->trace("write", path);
 
 	// Take fd from fi->fh
-	int retstat = pwrite(fi->fh, buf, size, offset);
+	int retstat = ::pwrite(fi->fh, buf, size, offset);
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_write write");
@@ -328,7 +328,7 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 	}
 
 	// get stats for underlying filesystem
-	retstat = statvfs(translated.c_str(), statv);
+	retstat = ::statvfs(translated.c_str(), statv);
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_statfs statvfs");
@@ -447,7 +447,7 @@ int Module::releasedir(const char *path, struct fuse_file_info *fi) {
 	int retstat = 0;
 
 	DIR *dp = reinterpret_cast<DIR *>(fi->fh);
-	closedir(dp);
+	::closedir(dp);
 
 	return retstat;
 }
