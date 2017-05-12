@@ -1,7 +1,8 @@
 target_sources (mammutfs
-	PUBLIC module/default.h
-	PUBLIC module/private.h
-	PUBLIC module/public.h
-	PUBLIC module/anonymous.h
-	PUBLIC module/backup.h
+	PUBLIC src/module/anonymous.h
+	PUBLIC src/module/backup.h
+	PUBLIC src/module/default.h
+	PUBLIC src/module/lister.h
+	PUBLIC src/module/private.h
+	PUBLIC src/module/public.h
 )

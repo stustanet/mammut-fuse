@@ -14,7 +14,9 @@ class MammutfsProtocol(asyncio.Protocol):
         loop.stop()
 
     def data_received(self, data):
-        print(data)
+        print("\r", end='')
+        print(data.decode('ascii'))
+        print("> ", end='',flush=True)
 
     def eof_received(self):
         print("\rEOF received");
@@ -51,6 +53,7 @@ transport, protocol = loop.run_until_complete(connect)
 loop.add_reader(sys.stdin.fileno(), lambda: stdin_received(transport))
 
 try:
+    print("> ", end='', flush=True)
     loop.run_forever()
     loop.close()
 finally:

@@ -4,3 +4,4 @@
 *.swo
 mammutfs
 cscope.out
+/build

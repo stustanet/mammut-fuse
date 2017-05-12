@@ -12,12 +12,24 @@
 
 int main(int argc, char **argv) {
 	const char *configfile = "mammutfs.cfg";
+	if (argc < 2) {
+		std::cout << "You did not specify a config file (as first argument), \n"
+		          << "using default one at " << configfile << std::endl;
+	} else {
+		configfile = argv[1];
+		std::cout << "Configfile specified. Using " << configfile << std::endl;
+		argv = &argv[1]; // skip over the first argument
+		argc--;
+	}
 
+	// Setting up the resolver, that manages active modules
 	auto resolver = std::make_shared<mammutfs::ModuleResolver>();
+	// Setting up the config that manges program wide configuration
 	auto config = std::make_shared<mammutfs::MammutConfig>(configfile,
 	                                                       argc,
 	                                                       argv,
 	                                                       resolver);
+	// Setting up the communicator, that manges the unix socket
 	auto communicator = std::make_shared<mammutfs::Communicator>(config);
 
 	/// Add all Modules to the following list
@@ -28,7 +40,9 @@ int main(int argc, char **argv) {
 	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config));
 	resolver->registerModule("lister", std::make_shared<mammutfs::PublicAnonLister>(config, communicator));
 
+	// Filter the modules to the active ones
 	config->filterModules(resolver);
 
+	// Hit the road
 	mammutfs::mammut_main(resolver, config);
 }

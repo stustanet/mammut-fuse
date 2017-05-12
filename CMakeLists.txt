@@ -3,25 +3,25 @@ cmake_minimum_required(VERSION 2.8)
 project (mammutfs)
 
 set (SOURCES
-	main.cpp
-	mammut_config.cpp
-	mammut_fuse.cpp
-	options.cpp
-	module.cpp
-	communicator.cpp
+	src/communicator.cpp
+	src/main.cpp
+	src/mammut_config.cpp
+	src/mammut_fuse.cpp
+	src/module.cpp
+	src/options.cpp
 )
 
 set (HEADERS
-	resolver.h
-	module.h
-	mammut_config.h
-	mammut_fuse.h
-	options.h
-	communicator.h
-	thread_queue.h
+	src/communicator.h
+	src/mammut_config.h
+	src/mammut_fuse.h
+	src/module.h
+	src/options.h
+	src/resolver.h
+	src/thread_queue.h
 )
 
-set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/../cmake")
+set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 message (${CMAKE_MODULE_PATH})
 
@@ -37,5 +37,5 @@ target_link_libraries(mammutfs pthread)
 
 set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
 
-add_subdirectory(module)
+add_subdirectory(src/module)
 
