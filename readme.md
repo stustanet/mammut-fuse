@@ -74,3 +74,19 @@ Ein Referenz-Client in Python liegt vor.
 
 
 
+Testing
+----------
+
+Um mammutfs zu testen, muss mit dem script tools/run-tests.py die Ordnerstruktur
+angelegt werden.
+Anschließend liegt ein beispielshafter baum in ```rauds/```.
+Nun muss ```mammutfs.cfg``` angepasst werden um die benutzten Pfade abzubilden.
+
+Nun startet man das FS mit ```mammutfs mammutfs.cfg``` und hat anschließend den
+definierten mount-ordner, in dem das Home-verzeichnis des konfigurierten
+Nutzers liegt.
+
+Im produktivbetrieb sollte man ```mammutfs mammutfs.cfg --username 001337``` starten,
+damit man den usernamen richtig konfigurieren kann - es können alle config werte
+so überschrieben werden.
+
