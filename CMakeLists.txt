@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 
 project (mammutfs)
 
@@ -21,6 +21,9 @@ set (HEADERS
 	src/thread_queue.h
 )
 
+include(src/module/CMakeLists.txt)
+
+
 set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 message (${CMAKE_MODULE_PATH})
@@ -37,5 +40,4 @@ target_link_libraries(mammutfs pthread)
 
 set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
 
-add_subdirectory(src/module)
 
