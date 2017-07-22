@@ -32,7 +32,7 @@ public:
 			rescan();
 		}
 
-		int pos = path.find('/', 1);
+		size_t pos = path.find('/', 1);
 		std::string entry = path.substr(1, pos - 1);
 
 		auto it = list.find(entry);
@@ -113,6 +113,7 @@ private:
 				            line.substr(split+1)));
 			std::cout << "Inserting " << line << std::endl;
 		}
+		return true;
 	}
 
 	std::map<std::string, std::string> list;

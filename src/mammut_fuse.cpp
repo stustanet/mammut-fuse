@@ -26,6 +26,9 @@ static int mammut_getattr(const char *path, struct stat *statbuf) {
 }
 
 static int mammut_readlink(const char *path, char *link, size_t size) {
+	(void)path;
+	(void)link;
+	(void)size;
 	// todo - is this right to disable all?
 	//GETMODULE(path);
 	//module->readlink(subdir, link, size);
@@ -48,6 +51,8 @@ static int mammut_rmdir(const char *path) {
 }
 
 static int mammut_symlink(const char *path, const char *link) {
+	(void)path;
+	(void)link;
 	// todo is it right to disable it completely?
 	//GETMODULE(path);
 	//return module->symlink(subdir, link);
@@ -203,10 +208,12 @@ static int mammut_create(const char *path,
 }
 
 void *mammut_init(struct fuse_conn_info *conn) {
+	(void)conn;
 	return &userdata;
 }
 
 void mammut_destroy(void *userdata) {
+	(void)userdata;
 }
 
 #undef GETMODULE
@@ -231,8 +238,8 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 		std::cout << "\t" << arg << std::endl;
 	}
 
-	struct fuse_operations mammut_ops = { 0 };
-
+	struct fuse_operations mammut_ops;
+	memset(&mammut_ops, 0, sizeof(mammut_ops));
 	mammut_ops.getattr  = mammut_getattr;
 	mammut_ops.readlink = mammut_readlink;
 	mammut_ops.getdir   = NULL;

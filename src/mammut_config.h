@@ -30,7 +30,7 @@ public:
 
 	std::list<std::string> raids;
 	bool deamonize;
-	uint64_t truncate_max_size;
+	int64_t truncate_max_size;
 	std::string anon_username;
 	std::string username;
 	std::string mountpoint;

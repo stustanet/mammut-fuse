@@ -50,6 +50,7 @@ int Module::find_raid(std::string &path) {
 }
 
 void Module::log(LOG_LEVEL lvl, const std::string &msg) {
+	(void)lvl;
 	std::cout << "[" << modname << "] " << msg << std::endl;
 }
 

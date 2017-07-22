@@ -14,41 +14,48 @@ public:
 		comm(comm) {}
 
 	virtual int mkdir(const char *path, mode_t mode) {
-		Module::mkdir(path, mode);
+		int i = Module::mkdir(path, mode);
 		inotify("MKDIR", path);
+		return i;
 	}
 
 	virtual int unlink(const char *path) {
-		Module::unlink(path);
+		int i = Module::unlink(path);
 		inotify("UNLINK", path);
+		return i;
 	}
 
 	virtual int rmdir(const char *path) {
-		Module::rmdir(path);
+		int i = Module::rmdir(path);
 		inotify("RMDIR", path);
+		return i;
 	}
 
 	virtual int rename(const char *a, const char *b) {
-		Module::rename(a, b);
+		int i = Module::rename(a, b);
 		std::string from = a;
 		from += " -> ";
 		from += b;
 		inotify("RENAME", from);
+		return i;
 	}
 
 	virtual int truncate(const char *path, off_t off) {
-		Module::truncate(path, off);
+		int i = Module::truncate(path, off);
 		inotify("TRUNCATE", path);
+		return i;
 	}
 
 	virtual int release(const char *path, struct fuse_file_info *fi) {
-		Module::release(path, fi);
+		int i = Module::release(path, fi);
 		inotify("RELEASE", path);
+		return i;
 	}
 
 	virtual int create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-		Module::create(path, mode, fi);
+		int i = Module::create(path, mode, fi);
 		inotify("CREATE", path);
+		return i;
 	}
 
 protected:

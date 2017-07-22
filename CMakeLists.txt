@@ -31,7 +31,8 @@ message (${CMAKE_MODULE_PATH})
 FIND_PACKAGE(Config++ REQUIRED)
 FIND_PACKAGE(fuse REQUIRED)
 
-add_definitions(" -ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 ")
+add_definitions(" -ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 -Wall -Wextra
+-pedantic")
 add_executable(mammutfs ${SOURCES} ${HEADERS})
 
 target_link_libraries(mammutfs ${CONFIG++_LIBRARY})

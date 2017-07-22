@@ -26,12 +26,13 @@ public:
 			int retval = Module::getattr(path, statbuf);
 			statbuf->st_uid         = config->anon_uid;
 			statbuf->st_gid         = config->anon_gid;
-			return 0;
+			return retval;
 		}
 		return -ENOENT;
 	}
 
 	int access(const char *path, int mask) override {
+		(void)path;
 		if ((mask & W_OK) == W_OK) {
 			return -1;
 		} else {
@@ -40,6 +41,7 @@ public:
 	}
 
 	int opendir(const char *path, struct fuse_file_info *fi) override {
+		(void) path;
 		fi->fh = -1;
 		return 0;
 	}
@@ -49,6 +51,10 @@ public:
 	            fuse_fill_dir_t filler,
 	            off_t offset,
 	            struct fuse_file_info *fi) override {
+		(void) path;
+		(void) offset;
+		(void) fi;
+
 		filler(buf, ".", NULL, 0);
 		filler(buf, "..", NULL, 0);
 		for (const auto &i : config->resolver->activatedModules()) {

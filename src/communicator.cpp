@@ -1,22 +1,26 @@
+// Copyright 2017 Johannes Walcher
+
 #include "communicator.h"
 
 #include "mammut_config.h"
 
-#include <sys/epoll.h>
-#include <sys/un.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
 #include <stdio.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #include <algorithm>
-#include <string>
 #include <deque>
+#include <string>
+#include <memory>
+#include <utility>
 
 
 namespace mammutfs {
 
-Communicator::Communicator (std::shared_ptr<MammutConfig> config) :
+Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	config(config) {
 	std::string socketname;
 	config->lookupValue("socket_directory", socketname);
@@ -32,7 +36,8 @@ Communicator::Communicator (std::shared_ptr<MammutConfig> config) :
 		exit(-1);
 	}
 
-	struct sockaddr_un socket_addr = { 0 };
+	struct sockaddr_un socket_addr;
+	memset(&socket_addr, 0, sizeof(socket_addr));
 	socket_addr.sun_family = AF_UNIX;
 	strncpy(socket_addr.sun_path, socketname.c_str(), socketname.size());
 	int retval = bind(connect_socket,
@@ -45,8 +50,10 @@ Communicator::Communicator (std::shared_ptr<MammutConfig> config) :
 	}
 
 	running = true;
-	thrd_send = std::make_unique<std::thread>(std::bind(&Communicator::thread_send, this));
-	thrd_recv = std::make_unique<std::thread>(std::bind(&Communicator::thread_recv, this));
+	thrd_send = std::make_unique<std::thread>(
+		std::bind(&Communicator::thread_send, this));
+	thrd_recv = std::make_unique<std::thread>(
+		std::bind(&Communicator::thread_recv, this));
 
 
 	register_void_command("HELP", [this](const std::string &) {
@@ -67,9 +74,9 @@ Communicator::~Communicator() {
 	running = false;
 	thrd_send->join();
 	thrd_recv->join();
-	close (connect_socket);
-	for (int i : connected_sockets) {
-		close (i);
+	close(connect_socket);
+	for(int i : connected_sockets) {
+		close(i);
 	}
 }
 
@@ -99,26 +106,26 @@ void Communicator::thread_send() {
 
 void Communicator::thread_recv() {
 	char buffer[1024];
-	pollingfd = epoll_create( 1 );
+	pollingfd = epoll_create(1);
 	if (pollingfd < 0) {
 		perror("epoll create");
 		exit(-1);
 	}
 
-	struct epoll_event ev = { 0 };
+	struct epoll_event ev;
+	memset(&ev, 0, sizeof(ev));
 	ev.events = EPOLLIN;
 	ev.data.fd = connect_socket;
 	if (epoll_ctl(pollingfd, EPOLL_CTL_ADD, connect_socket, &ev) != 0) {
 		perror("epoll_ctl");
 	}
 
-	struct epoll_event pevents [20];
+	struct epoll_event pevents[20];
 
 	while (running) {
 		int ready = epoll_wait(pollingfd, pevents, 20, -1);
 		if (ready == -1) {
 			perror("epoll_wait");
-//			exit(-1);
 		}
 
 		for (int i = 0; i < ready; ++i) {
@@ -151,10 +158,13 @@ void Communicator::thread_recv() {
 }
 
 void Communicator::remove_client(int sock) {
-	for (auto it = connected_sockets.begin(); it != connected_sockets.end(); ++it) {
+	for(auto it = connected_sockets.begin();
+	    it != connected_sockets.end();
+	    ++it) {
 		if (*it == sock) {
 			connected_sockets.erase(it);
-			struct epoll_event ev = { 0 };
+			struct epoll_event ev;
+			memset(&ev, 0, sizeof(ev));
 			ev.data.fd = sock;
 			if (epoll_ctl(pollingfd, EPOLL_CTL_DEL, sock, &ev) != 0) {
 				perror("epoll_ctl");
@@ -168,14 +178,15 @@ void Communicator::send(const std::string &data) {
 	queue.enqueue(data);
 }
 
-void Communicator::inotify (const std::string &operation,
-                            const std::string &path) {
+void Communicator::inotify(const std::string &operation,
+                           const std::string &path) {
 	sstrbuf.str("");
 	sstrbuf.clear();
 	sstrbuf << "{\"op\":\"" << operation
 	        << "\",\"path\":\"" << path << "\"}" << std::endl;
 	send(sstrbuf.str());
 }
+
 
 void Communicator::register_command(const std::string &command,
                                     const Communicator::command_callback &cb) {
@@ -189,7 +200,7 @@ void Communicator::execute_command(std::string cmd) {
 	if (cmd.size() == 0) return;
 
 	std::cout << "Received command: " << cmd << std::endl;
-	int pos = cmd.find(':');
+	size_t pos = cmd.find(':');
 	std::string data;
 	if (pos != std::string::npos) {
 		data = cmd.substr(pos+1);
@@ -210,4 +221,4 @@ void Communicator::execute_command(std::string cmd) {
 	}
 }
 
-}
+}  // namespace mammutfs
