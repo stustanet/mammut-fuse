@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+
+import libconf;
+import io
+import sys
+import os
+from pprint import pprint
+import string
+import random
+
+
+ALLOWED_CHARS=string.ascii_uppercase + string.ascii_lowercase + string.digits + "!&()+,-.="
+
+
+def scan_anon_dir(path, entry, old_entries):
+    public_entries = [];
+    for entry in os.listdir(path):
+        out_path = path + "/" + entry
+        if out_path in old_entries:
+            print("Selecting old value for " + out_path + ": " + old_entries[out_path]);
+            public_entries.append((old_entries[out_path], out_path))
+        else:
+            # Repeat until a unique identifier was found;
+            while True:
+                # Generate a new random string for identification
+                suffix = ''.join(random.choice(string.ascii_uppercase
+                                               + string.ascii_lowercase
+                                               + string.digits)
+                                 for _ in range(3));
+                new_entry = ""
+                for e in entry:
+                    if not e in ALLOWED_CHARS:
+                        new_entry += "_"
+                    else:
+                        new_entry += e
+
+                new_entry = "a_" + new_entry + "_" + suffix
+                new_path = path + entry
+                if not new_entry in public_entries:
+                    public_entries.append((new_entry, new_path))
+                    break
+    return public_entries
+
+def main(configfile, outfile, oldfile):
+    old_entries = {}
+    try:
+        with io.open(oldfile) as f:
+            for line in f:
+                l = line.split(':', 1)
+                old_entries[l[1]] = l[0]
+    except FileNotFoundError:
+        pass
+
+    with io.open(configfile) as f:
+        config = libconf.load(f)
+
+    public_entries = []
+    print(config['raids'])
+    for basepath in config['raids']:
+        print("Using raid " + basepath)
+        try:
+            path = basepath + "/public"
+            print("using path " + path)
+            for entry in os.listdir(path):
+                # Only add public folders that are not empty.
+                if [name for name in os.listdir(path)]:
+                    public_entries.append((entry, path + "/" + entry))
+            for user in os.listdir(path):
+                path = basepath + "/anonym/" + user + "/"
+                try:
+                    public_entries += scan_anon_dir(path, old_entries)
+                except FileNotFoundError:
+                    print("INFO: could not find file " + path)
+                    pass
+        except FileNotFoundError:
+            print("INFO: path not containing path: " + path)
+            pass
+    public_entries = sorted(public_entries, key=lambda e:e[0])
+
+    # The public_entries list is done
+    pprint(public_entries)
+    with io.open(outfile, "w") as f:
+        for e in public_entries:
+            line = e[0] + ":" + e[1] + "\n"
+            f.write(line);
+
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Syntax: SCAN CONFIG LISTFILE OLDFILE")
+        exit(1)
+
+    config = sys.argv[1];
+    outfile = sys.argv[2];
+    oldfile = sys.argv[3];
+
+    main(config, outfile, oldfile)

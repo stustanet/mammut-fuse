@@ -2,6 +2,8 @@
 
 #include <libconfig.h++>
 
+#include <sys/types.h>
+
 #include <list>
 #include <map>
 #include <memory>
@@ -36,10 +38,10 @@ public:
 	std::string mountpoint;
 	std::string anon_mapping_file;
 
-	uint16_t anon_uid;
-	uint16_t anon_gid;
-	uint16_t user_uid;
-	uint16_t user_gid;
+	uid_t anon_uid;
+	uid_t anon_gid;
+	uid_t user_uid;
+	uid_t user_gid;
 
 	char *const self;
 

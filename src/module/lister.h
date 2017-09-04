@@ -49,6 +49,18 @@ public:
 		return 0;
 	}
 
+
+
+	int getattr(const char *path, struct stat *statbuf) {
+		int retstat = Module::getattr(path, statbuf);
+		// Eliminate all User-IDs from the items
+		// TODO: Maybe we want to keep UIDs for public listing, this way we will eliminate all of them
+		statbuf->st_uid = config->anon_uid;
+		statbuf->st_gid = config->anon_gid;
+		return retstat;
+	}
+
+
 	int mkdir(const char *path, mode_t mode) override {
 		if (strcmp(path, "/") == 0) {
 			this->trace("lister::mkdir", path);
@@ -98,7 +110,7 @@ private:
 		std::cout << "reading file: " << config->anon_mapping_file << std::endl;
 		std::ifstream file(config->anon_mapping_file, std::ios::in);
 		if (!file) {
-			std::cout << "Error opening config file" << std::endl;
+			std::cout << "Error opening anon mapping file" << std::endl;
 			return false;
 		}
 		std::string line;
@@ -108,11 +120,13 @@ private:
 				std::cout << "Skipping invalid line: " << line;
 				continue;
 			}
-			list.insert(std::make_pair(
-				            line.substr(0, split),
-				            line.substr(split+1)));
-			std::cout << "Inserting " << line << std::endl;
+			auto p = std::make_pair(
+				      		line.substr(0, split),
+				            line.substr(split+1));
+			list.insert(p);
+		//	std::cout << "ANON: " << p.first << " ----> " << p.second << std::endl;
 		}
+		std::cout << "found " << list.size() << " elements." << std::endl;
 	}
 
 	std::map<std::string, std::string> list;

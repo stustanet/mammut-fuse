@@ -7,6 +7,8 @@
 #include <vector>
 #include <iostream>
 
+#include <syslog.h>
+
 namespace mammutfs {
 
 static struct userdata_t {
@@ -202,7 +204,20 @@ static int mammut_create(const char *path,
 	return module->create(subdir, mode, fi);
 }
 
+static int mammut_utimens(const char *path,
+						 const struct timespec tv[2]) {
+	GETMODULE(path);
+	return module->utimens(subdir, tv);
+}
+
 void *mammut_init(struct fuse_conn_info *conn) {
+	if (conn->capable & FUSE_CAP_EXPORT_SUPPORT) {
+		conn->want |= FUSE_CAP_EXPORT_SUPPORT;
+		syslog(LOG_WARNING, "setting FUSE_CAP_EXPORT_SUPPORT");
+	} else {
+		syslog(LOG_ERR, "ERROR NOT SETTING FUSE_CAP_EXPORT_SUPPORT");
+	}
+
 	return &userdata;
 }
 
@@ -213,15 +228,39 @@ void mammut_destroy(void *userdata) {
 
 void mammut_main (std::shared_ptr<ModuleResolver> resolver,
                   std::shared_ptr<MammutConfig> config) {
+
+	openlog("mammutfs", LOG_PID, 0);
+
 	userdata.resolver = resolver;
 	userdata.config = config;
 
 	std::vector<const char *> fuseargs;
-	fuseargs.push_back(config->self);
+	//fuseargs.push_back(config->self);
+	//fuseargs.push_back("mammutfs");
+	
+	fuseargs.push_back("-ofsname=mammutfs");     // We want to have the name mammutfs
+	fuseargs.push_back("-osubtype=fuse.mammutfs");  // We want to have the name mammutfs
+	fuseargs.push_back("-ononempty");            // We need to mount over the original mount-fuckups
+	fuseargs.push_back("-odefault_permissions"); // To allow us to set permissions
+	fuseargs.push_back("-oallow_other");         // To enable smb
+	fuseargs.push_back("-ouse_ino");             // Copy the underlying inodes instead of giving us new ones. Might give us more inodes!
+	fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever
 
+/*
+	// Set the userid
+	char uidbuffer[128];
+	snprintf(uidbuffer, sizeof(uidbuffer), "-ouser_id=%i", config->user_uid);
+	fuseargs.push_back(uidbuffer);
+	
+	// set the gid
+	char gidbuffer[128];
+	snprintf(gidbuffer, sizeof(gidbuffer), "-ogroup_id=%i", config->user_gid);
+	fuseargs.push_back(gidbuffer);
+*/
 	if (!config->deamonize) {
 		fuseargs.push_back("-f");
 	}
+	
 
 	fuseargs.push_back("--");
 	fuseargs.push_back(config->mountpoint.c_str());
@@ -268,6 +307,7 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	mammut_ops.destroy    = mammut_destroy;
 	mammut_ops.access     = mammut_access;
 	mammut_ops.create     = mammut_create;
+	mammut_ops.utimens    = mammut_utimens;
 
 	// the magic happens here
 	int fuse_stat = fuse_main(fuseargs.size(),
