@@ -244,7 +244,7 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	fuseargs.push_back("-odefault_permissions"); // To allow us to set permissions
 	fuseargs.push_back("-oallow_other");         // To enable smb
 	fuseargs.push_back("-ouse_ino");             // Copy the underlying inodes instead of giving us new ones. Might give us more inodes!
-	fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever
+//	fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever - this might be enabled, if nfs is making troubles!
 
 /*
 	// Set the userid

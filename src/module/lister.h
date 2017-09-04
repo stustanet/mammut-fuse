@@ -25,9 +25,14 @@ public:
 
 	int translatepath(const std::string &path, std::string &out) override {
 		if (path == "/") {
-			out = ".";
+			out = "core";
 			return 0;
 		}
+		if (path == "/core") {
+			out = "core";
+			return -ENOTSUP;
+		}
+
 		if (list.empty()) {
 			rescan();
 		}
@@ -50,8 +55,25 @@ public:
 	}
 
 
+	virtual int getattr(const char *path, struct stat *statbuf) override {
+		memset(statbuf, 0, sizeof(*statbuf));
+		if (strcmp(path, "/core") == 0) {
+			statbuf->st_dev         = 0;               // IGNORED Device
+			statbuf->st_ino         = 998;             // IGNORED inode number
+			statbuf->st_mode        = S_IFDIR | 0755;  // Protection
+			statbuf->st_nlink       = 0;               // Number of Hard links
+			statbuf->st_uid         = config->anon_uid;
+			statbuf->st_gid         = config->anon_gid;
+			statbuf->st_rdev        = 0;
+			statbuf->st_size        = 1ull << 62;
+			statbuf->st_blksize     = 0;  // IGNORED
+			statbuf->st_blocks      = 0;
+			statbuf->st_atim.tv_sec = 0;  // Last Access
+			statbuf->st_mtim.tv_sec = 0;  // Last Modification
+			statbuf->st_ctim.tv_sec = 0;  // Last Status change
+			return 0;
+		}
 
-	int getattr(const char *path, struct stat *statbuf) {
 		int retstat = Module::getattr(path, statbuf);
 		// Eliminate all User-IDs from the items
 		// TODO: Maybe we want to keep UIDs for public listing, this way we will eliminate all of them
@@ -93,6 +115,7 @@ public:
 			this->trace("lister::readdir", path);
 			filler(buf, ".", NULL, 0);
 			filler(buf, "..", NULL, 0);
+			filler(buf, "core", NULL, 0);
 			for (const auto  &entry : list) {
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
 					return -ENOMEM;
@@ -102,6 +125,24 @@ public:
 			return Module::readdir(path, buf, filler, offset, fi);
 		}
 		return 0;
+	}
+
+	virtual int open(const char *path, struct fuse_file_info *fi) override {
+		if (strcmp("/core", path) == 0) {
+			return 1;
+		} else {
+			return Module::open(path, fi);
+		}
+	}
+
+	virtual int read(const char *path, char *buf, size_t size, off_t offset,
+			struct fuse_file_info *fi) override {
+		if (strcmp("/core", path) == 0) {
+			memset(buf, 42, size);
+			return size;
+		} else {
+			return Module::read(path, buf, size, offset, fi);
+		}
 	}
 
 private:
