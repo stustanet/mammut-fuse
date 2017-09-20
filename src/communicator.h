@@ -41,15 +41,20 @@ public:
 	void inotify (const std::string &operation, const std::string &path);
 
 	using command_callback = std::function<bool(const std::string &data)>;
-	void register_command(const std::string &command, const command_callback &);
+	void register_command(const std::string &command,
+	                      const command_callback &,
+	                      const std::string &helptext = ""
+	);
 
 	using void_command_callback = std::function<void(const std::string &data)>;
-	void register_void_command(const std::string &command, const void_command_callback &cb) {
+	void register_void_command(const std::string &command,
+	                           const void_command_callback &cb,
+	                           const std::string &helptext = "") {
 		register_command(command,
 		                 [cb](const std::string &data) {
 			                 cb(data);
 			                 return true;
-		                 });
+		                 }, helptext);
 	}
 
 
@@ -67,8 +72,11 @@ private:
 	int pollingfd;
 	std::vector<int> connected_sockets;
 
-
-	std::map<std::string, command_callback> commands;
+	struct command {
+		command_callback callback;
+		std::string helptext;
+	};
+	std::map<std::string, command> commands;
 
 	SafeQueue<std::string> queue;
 

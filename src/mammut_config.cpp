@@ -49,6 +49,11 @@ MammutConfig::MammutConfig(const char *filename,
 		}
 	}
 
+	std::cout << "CMD Line: " << std::endl;
+	for (const auto &e : this->cmdline) {
+		std::cout << "\t" << e.first << "=" << e.second << std::endl;
+	}
+
 	auto &settings_raid = config->lookup("raids");
 	for (auto it = settings_raid.begin(); it != settings_raid.end(); ++it) {
 		raids.push_back(*it);

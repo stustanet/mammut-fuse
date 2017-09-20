@@ -68,6 +68,28 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	register_void_command("USER", [this](const std::string &) {
 			this->send(this->config->username);
 		});
+
+	
+	register_void_command("CONFIG", [this](const std::string &confkey) {
+			std::string str;
+			if (this->config->lookupValue(confkey.c_str(), str, true)) {
+				this->send(str);
+			} else {
+				this->send("{'state':'error','error':'could not find config value'}");
+			}
+		}, "CONFIG:<key>");
+
+	register_command("SETCONFIG", [this](const std::string &kvpair) {
+			size_t pos = kvpair.find('=');
+			std::string key, value;
+			if (pos != std::string::npos) {
+				key = kvpair.substr(0, pos);
+				value = kvpair.substr(pos+1);
+			} else {
+				return false;
+			}
+			this->config.set_value(key, value)
+		}, "SETCONFIG:<key>=<value>");
 }
 
 Communicator::~Communicator() {
@@ -188,11 +210,20 @@ void Communicator::inotify(const std::string &operation,
 }
 
 
-void Communicator::register_command(const std::string &command,
-                                    const Communicator::command_callback &cb) {
-	std::string cmd = command;
-	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
-	commands.insert(std::make_pair(command, cb));
+void Communicator::register_command(const std::string &unfiltered_command,
+                                    const Communicator::command_callback &cb,
+                                    const std::string &helptext) {
+	std::string str = unfiltered_command;
+	std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+	command cmd;
+	cmd.callback = cb;
+	if (helptext == "") {
+		cmd.helptext = unfiltered_command;
+	} else {
+		cmd.helptext = helptext;
+	}
+
+	this->commands.insert(std::make_pair(str, cmd));
 }
 
 
@@ -210,7 +241,7 @@ void Communicator::execute_command(std::string cmd) {
 	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 	auto it = commands.find(cmd);
 	if (it != commands.end()) {
-		if (it->second(data)) {
+		if (it->second.callback(data)) {
 			send("{\"state\":\"success\"}");
 		} else {
 			send("{\"state\":\"error\",\"error\":\"" + cmd + "\",}");

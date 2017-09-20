@@ -45,7 +45,7 @@ public:
 
 
 	template <typename _T>
-	bool lookupValue(const char *key, _T &value) const {
+	bool lookupValue(const char *key, _T &value, bool ignore_error = false) const {
 		std::cout << "Looking for " << key;
 		auto it = cmdline.find(key);
 		if (it != cmdline.end()) {
@@ -64,7 +64,9 @@ public:
 				std::cout << " [file] " << value << std::endl;
 			} else {
 				std::cout << " \033[044mCOULD NOT FIND CONFIG VALUE!\033[00m" << std::endl;
-				exit(-1);
+				if (!ignore_error) {
+					exit(-1);
+				}
 			}
 			return state;
 		}
