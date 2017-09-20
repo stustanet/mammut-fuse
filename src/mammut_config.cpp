@@ -27,6 +27,8 @@ MammutConfig::MammutConfig(const char *filename,
 		exit(-1);
 	}
 
+	std::cout << "Overwrite configs on command line with --<listed option name> value" << std::endl;
+
 	enum STATE {
 		EXPECT_KEY,
 		EXPECT_VALUE
@@ -37,10 +39,10 @@ MammutConfig::MammutConfig(const char *filename,
 		if (state == EXPECT_KEY) {
 			if (argv[i][0] == '-' && argv[i][1] == '-') {
 				last_key = &argv[i][2];
-				cmdline[last_key] = "";
+				//cmdline[last_key] = "";
 				state = EXPECT_VALUE;
 			} else {
-				std::cerr << "Error in command Line: Expecting option, "
+				std::cout << "Error in command Line: Expecting option, "
 				          << "got: " << argv[i] << std::endl;
 			}
 		} else if (state == EXPECT_VALUE) {
@@ -53,6 +55,7 @@ MammutConfig::MammutConfig(const char *filename,
 	for (const auto &e : this->cmdline) {
 		std::cout << "\t" << e.first << "=" << e.second << std::endl;
 	}
+	std::cout << std::endl;
 
 	auto &settings_raid = config->lookup("raids");
 	for (auto it = settings_raid.begin(); it != settings_raid.end(); ++it) {
@@ -79,6 +82,10 @@ MammutConfig::MammutConfig(const char *filename,
 	anon_uid = passwd_info->pw_uid;
 	anon_gid = passwd_info->pw_gid;
 
+	std::cout << "Anonymous User: " << anon_username
+		<< " UID " << anon_uid
+	   	<< " GID " << anon_gid << std::endl;
+
 	passwd_info = getpwnam(username.c_str());
 	if (passwd_info == NULL) {
 		std::cerr << "Could not find user \"" << username
@@ -87,6 +94,10 @@ MammutConfig::MammutConfig(const char *filename,
 	}
 	user_uid = passwd_info->pw_uid;
 	user_gid = passwd_info->pw_gid;
+
+	std::cout << "Operating User: " << username
+		<< " UID " << user_uid
+	   	<< " GID " << user_gid << std::endl;
 
 }
 

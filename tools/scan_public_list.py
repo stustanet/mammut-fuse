@@ -8,6 +8,49 @@ from pprint import pprint
 import string
 import random
 
+ALLOWED_CHARS=string.ascii_uppercase + string.ascii_lowercase + string.digits + "!&()+,-.="
+
+
+def list_anon_dir(path, old_entries):
+    public_entries = []
+    for anonuser in os.listdir(path):
+        anonpath = path + "/" + anonuser
+        print("Scanning User dir " + anonpath)
+        for entry in os.listdir(anonpath):
+            out_path = anonpath + "/" + entry
+            print("Scanning anondir " + out_path)
+            try:
+                # Of the folder is empty we should safely ignore it;
+                if not [name for name in os.listdir(path + "/" + entry)]:
+                    print("Skipping empty anon folder " + path + "/" + entry)
+                    continue;
+            except FileNotFoundError:
+                pass
+
+            if out_path in old_entries:
+                print("Selecting old value for " + out_path + ": " + old_entries[out_path]);
+                public_entries.append((old_entries[out_path], out_path))
+            else:
+                # Repeat until a unique identifier was found;
+                while True:
+                    # Generate a new random string for identification
+                    suffix = ''.join(random.choice(string.ascii_uppercase
+                                                   + string.ascii_lowercase
+                                                   + string.digits)
+                                     for _ in range(3));
+                    new_entry = ""
+                    for e in entry:
+                        if not e in ALLOWED_CHARS:
+                            new_entry += "_"
+                        else:
+                            new_entry += e
+
+                    new_entry = "a_" + new_entry + "_" + suffix
+                    new_path = anonpath + "/" + entry
+                    if not new_entry in public_entries:
+                        public_entries.append((new_entry, new_path))
+                        break
+    return public_entries
 
 def main(configfile, outfile, oldfile):
     old_entries = {}
@@ -24,35 +67,23 @@ def main(configfile, outfile, oldfile):
 
     public_entries = []
     for basepath in config['raids']:
-        path = basepath + "/public"
-        for entry in os.listdir(path):
-            public_entries.append((entry, path + "/" + entry))
-
-        for user in os.listdir(path):
-            path = basepath + "/anonymous/" + user + "/"
-            try:
-                for entry in os.listdir(path):
-                    out_path = path + "/" + entry
-                    if out_path in old_entries:
-                        print("Selecting old value for " + out_path + ": " + old_entries[out_path]);
-                        public_entries.append((old_entries[out_path], out_path))
+        try:
+            path = basepath + "/public"
+            for entry in os.listdir(path):
+                try:
+                    if [name for name in os.listdir(path + "/" + entry)]:
+                        public_entries.append((entry, path + "/" + entry))
                     else:
-                        # Repeat until a unique identifier was found;
-                        while True:
-                            # Generate a new random string for identification
-                            suffix = ''.join(random.choice(string.ascii_uppercase
-                                                           + string.ascii_lowercase
-                                                           + string.digits)
-                                             for _ in range(3));
-                            new_entry = entry + "_" + suffix
-                            new_path = path + entry
-                            if not new_entry in public_entries:
-                                public_entries.append((new_entry, new_path))
-                                break
-            except FileNotFoundError:
-                print("could not find file " + path)
-                pass
-
+                        print("Skipping empty user folder " + path + "/" + entry)
+                except FileNotFoundError:
+                    pass
+        except FileNotFoundError:
+            pass
+        try:
+            path = basepath + "/anonym";
+            public_entries += list_anon_dir(path, old_entries)
+        except FileNotFoundError:
+            pass
     public_entries = sorted(public_entries, key=lambda e:e[0])
 
     # The public_entries list is done
@@ -62,7 +93,6 @@ def main(configfile, outfile, oldfile):
             line = e[0] + ":" + e[1] + "\n"
             f.write(line);
 
-   
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

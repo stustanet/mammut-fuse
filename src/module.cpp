@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <iostream>
+#include <sstream>
 
 namespace mammutfs {
 
@@ -32,7 +33,8 @@ int Module::find_raid(std::string &path) {
 
 		this->log(LOG_LEVEL::INFO, std::string("Testing raid " + to_test));
 		struct stat statbuf;
-		int retval = stat(to_test.c_str(), &statbuf);
+		memset(&statbuf, 0, sizeof(statbuf));
+		int retval = ::stat(to_test.c_str(), &statbuf);
 
 		if (retval == 0) {
 			this->log(LOG_LEVEL::INFO, std::string("Found raid at " + to_test));
@@ -49,20 +51,48 @@ int Module::find_raid(std::string &path) {
 	return 0;
 }
 
-void Module::log(LOG_LEVEL lvl, const std::string &msg) {
-	(void)lvl;
-	std::cout << "[" << modname << "] " << msg << std::endl;
+void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path) {
+	if (lvl < max_loglvl) {
+		return;
+	}
+
+
+	std::string prefix, suffix = "\033[0m";
+	switch(lvl) {
+	case LOG_LEVEL::TRACE:
+		prefix = "\033[0m"; // nothing;
+		break;
+	case LOG_LEVEL::INFO:
+		prefix = "\033[36m"; // blue;
+		break;
+	case LOG_LEVEL::WRN:
+		prefix = "\033[33m"; // yellow
+		break;
+	case LOG_LEVEL::ERR:
+		prefix = "\033[31m"; // red
+		break;
+	default:
+		break;
+	}
+
+	std::cout << prefix << "[" << modname << "] " << suffix << msg;
+	if (path != "") {
+		std::cout << ": " << path;
+	}
+	std::cout << std::endl;
 }
 
 void Module::trace(const std::string &method,
                    const std::string &path,
                    const std::string &second_path) {
-	log(LOG_LEVEL::TRACE, method + " " + path + " " + second_path);
+	log(LOG_LEVEL::TRACE, method + " ", path + " " + second_path);
 }
 
 int Module::getattr(const char *path, struct stat *statbuf) {
-	this->trace("getattr", path);
-
+	// Since getattr is spaming a _lot_, it should be more quiet to make actual
+	// fs interactions more readable.
+	//this->trace("getattr", path);
+	memset(statbuf, 0, sizeof(*statbuf));
 	if (strcmp(path, "/") == 0) {
 		statbuf->st_dev         = 0;               // IGNORED Device
 		statbuf->st_ino         = 999;             // IGNORED inode number
@@ -83,25 +113,34 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated)) != 0) {
-		this->log(LOG_LEVEL::WRN, "getattr - translatepath");
+		this->log(LOG_LEVEL::WRN, "getattr - translatepath failed", path);
 	} else {
 		retstat = ::lstat(translated.c_str(), statbuf);
 		if (retstat) {
 			retstat = -errno;
-			this->log(LOG_LEVEL::WRN, "mammut_getattr lstat");
+			if (errno != ENOENT) {
+				perror("ERROR: getattr lstat");
+				this->log(LOG_LEVEL::WRN, "ERROR: getattr lstat ", translated);
+			}	
 		}
 	}
 
 	// Eliminate all User-IDs from the items
-	statbuf->st_uid = config->anon_uid;
-	statbuf->st_gid = config->anon_gid;
-
+//	statbuf->st_uid = config->anon_uid;
+//	statbuf->st_gid = config->anon_gid;
 	return retstat;
 }
 
 
 int Module::readlink(const char *path, char *link, size_t size) {
 	this->trace("readlink", path);
+	return -ENOTSUP;
+	// It can be dangerous reading arbitrary symlinks. We need to do a lot of
+	// sanitizing to allow such things. Only relative symlinks within the
+	// module should be supported - if they are supported at all. 
+	// Symlinks are the most serious thread to mammut, everything else is
+	// pretty easy to contain.
+	/*this->trace("readlink", path);
 	int retstat = 0;
 
 	if (size == 0)
@@ -119,7 +158,7 @@ int Module::readlink(const char *path, char *link, size_t size) {
 		retstat       = 0;
 	}
 
-	return retstat;
+	return retstat;*/
 }
 
 /* Deprecated, use readdir() instead */
@@ -249,7 +288,8 @@ int Module::truncate(const char *path, off_t newsize) {
 
 	if (newsize > config->truncate_max_size) {
 		struct stat st;
-		if (stat(translated.c_str(), &st) != 0) {
+		memset(&st, 0, sizeof(st));
+		if (::stat(translated.c_str(), &st) != 0) {
 			return -errno;
 		}
 
@@ -276,6 +316,8 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 		return retstat;
 	}
 
+	// TODO How not to follow symlinks?
+	fi->flags |= O_NOFOLLOW;	
 	int fd = ::open(translated.c_str(), fi->flags);
 	if (fd < 0) {
 		retstat = -errno;
@@ -329,6 +371,7 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 	}
 
 	// get stats for underlying filesystem
+	memset(statv, 0, sizeof(*statv));
 	retstat = ::statvfs(translated.c_str(), statv);
 	if (retstat < 0) {
 		retstat = -errno;
@@ -468,17 +511,18 @@ int Module::access(const char *path, int mask) {
 	if ((retstat = this->translatepath(path, translated))) {
 		return retstat;
 	}
-
-	return ::access(translated.c_str(), mask);
+	retstat = ::access(translated.c_str(), mask);
+	return retstat;
 }
 
 
 int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-	this->trace("access", path);
+	this->trace("create", path);
 
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->log(LOG_LEVEL::WRN, "FAILED: translate: create" + std::string(path));
 		return retstat;
 	}
 

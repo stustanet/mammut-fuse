@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
 	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config));
 	resolver->registerModule("private", std::make_shared<mammutfs::Private>(config));
 	resolver->registerModule("public", std::make_shared<mammutfs::Public>(config, communicator));
-	resolver->registerModule("anonymous", std::make_shared<mammutfs::Anonymous>(config, communicator));
+	resolver->registerModule("anonym", std::make_shared<mammutfs::Anonymous>(config, communicator));
 	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config));
 	resolver->registerModule("lister", std::make_shared<mammutfs::PublicAnonLister>(config, communicator));
 

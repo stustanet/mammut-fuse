@@ -90,3 +90,12 @@ Im produktivbetrieb sollte man ```mammutfs mammutfs.cfg --username 001337``` sta
 damit man den usernamen richtig konfigurieren kann - es können alle config werte
 so überschrieben werden.
 
+
+# Install
+
+Symlinks:
+
+systemd/mammutfs.mount --> /etc/systemd/user/
+sbin/mount.fuse.mammutfs --> /sbin/
+systemd/user-slice-mammutfs.conf --> /etc/systemd/system/user@.service.d/mammutfs.conf
+

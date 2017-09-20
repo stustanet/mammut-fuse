@@ -1,0 +1,23 @@
+[Unit]
+Description=Mammutfs public lister
+After=raidmounts.target
+
+[Service]
+Type=forking
+User=www-data
+Group=www-data
+WorkingDirectory=/usr/local/sbin/mammut-fuse/
+ExecStart=/usr/local/sbin/mammut-fuse/build/mammutfs /etc/mammutfs/public-list.conf
+#PIDFile=/run/mammutfs/socket/nobody
+Restart=always
+# Create mammutfs_sockets
+RuntimeDirectory=mammutfs_sockets
+# Anybody has to be able create sockets there
+RuntimeDirectoryMode=777
+
+
+
+
+[Install]
+WantedBy=multi-user.target
+

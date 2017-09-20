@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import pwd
+
+# sys.argv[1] is the UNAME, not the UID
+
+
+
+with open("/tmp/mammutfs_args", "w") as fil:
+    fil.write(str(sys.argv))
+
+print(os.getegid())
+
+if os.fork() != 0:
+    exit(0)
+
+
+userid = sys.argv[1] # TODO Confirm that this is a valid userid
+pwnam = pwd.getpwnam(userid)
+
+#CONFIG:
+mammutfs = "/usr/local/sbin/mammut-fuse/build/mammutfs"
+config_user = "/etc/mammutfs/user.conf"
+home = sys.argv[2]# "/srv/home.mammutfs/{}".format(pwnam.pw_name)
+
+
+os.makedirs("/run/mammutfs/socket", exist_ok=True)
+#os.chown(home, pwnam.pw_uid, pwnam.pw_gid)
+
+
+args = [mammutfs, config_user,
+        "--mountpoint", home,
+        "--username", pwnam.pw_name]
+
+# Drop into the users priviliges
+# Set the group priviliges
+#os.setgroups(os.getgrouplist(pwnam.pw_name, pwnam.pw_gid))
+#os.setgid(pwnam.pw_gid)
+#os.setuid(pwnam.pw_uid)
+
+#os.environ['HOME'] = home
+
+# Start mammutfs with arguments
+print("Starting " + str(args))
+os.execv(mammutfs, args)
+

@@ -20,7 +20,9 @@ public:
 		ERR
 	};
 
-	void log(LOG_LEVEL lvl, const std::string &msg);
+	void set_max_loglevel(LOG_LEVEL lvl);
+
+	void log(LOG_LEVEL lvl, const std::string &msg, const std::string &path = "" );
 	void trace(const std::string &method,
 	           const std::string &path,
 	           const std::string &second_path = "");
@@ -310,6 +312,7 @@ protected:
 	std::shared_ptr<MammutConfig> config;
 	std::string modname;
 	std::string basepath;
+	LOG_LEVEL max_loglvl = LOG_LEVEL::TRACE;
 };
 
 } // mammutfs
