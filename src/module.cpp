@@ -315,7 +315,7 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 	if ((retstat = this->translatepath(path, translated))) {
 		return retstat;
 	}
-	
+
 	// TODO How not to follow symlinks?
 	fi->flags |= O_NOFOLLOW;	
 	int fd = ::open(translated.c_str(), fi->flags);
@@ -517,7 +517,7 @@ int Module::access(const char *path, int mask) {
 
 
 int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-	this->trace("create", path);	
+	this->trace("create", path);
 
 	int retstat = 0;
 	std::string translated;

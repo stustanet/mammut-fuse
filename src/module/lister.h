@@ -37,7 +37,7 @@ public:
 			rescan();
 		}
 
-		int pos = path.find('/', 1);
+		size_t pos = path.find('/', 1);
 		std::string entry = path.substr(1, pos - 1);
 
 		auto it = list.find(entry);
@@ -168,6 +168,7 @@ private:
 		//	std::cout << "ANON: " << p.first << " ----> " << p.second << std::endl;
 		}
 		std::cout << "found " << list.size() << " elements." << std::endl;
+		return true;
 	}
 
 	std::map<std::string, std::string> list;

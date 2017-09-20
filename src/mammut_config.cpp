@@ -16,9 +16,9 @@ MammutConfig::MammutConfig(const char *filename,
                            int argc,
                            char **argv,
                            std::shared_ptr<ModuleResolver> resolver) :
-	config (new libconfig::Config()),
+	resolver(resolver),
 	self(argv[0]),
-	resolver(resolver) {
+	config (new libconfig::Config()) {
 	try {
 		config->readFile(filename);
 	} catch (libconfig::FileIOException &e) {

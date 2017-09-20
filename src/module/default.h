@@ -53,6 +53,10 @@ public:
 	            fuse_fill_dir_t filler,
 	            off_t offset,
 	            struct fuse_file_info *fi) override {
+		(void) path;
+		(void) offset;
+		(void) fi;
+
 		filler(buf, ".", NULL, 0);
 		filler(buf, "..", NULL, 0);
 		for (const auto &i : config->resolver->activatedModules()) {

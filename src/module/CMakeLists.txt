@@ -1,8 +1,8 @@
-target_sources (mammutfs
-	PUBLIC src/module/anonymous.h
-	PUBLIC src/module/backup.h
-	PUBLIC src/module/default.h
-	PUBLIC src/module/lister.h
-	PUBLIC src/module/private.h
-	PUBLIC src/module/public.h
+set(HEADER ${HEADER}
+	src/module/anonymous.h
+	src/module/backup.h
+	src/module/default.h
+	src/module/lister.h
+	src/module/private.h
+	src/module/public.h
 )
