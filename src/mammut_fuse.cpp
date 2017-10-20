@@ -251,8 +251,8 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	fuseargs.push_back("-ouse_ino");             // Copy the underlying inodes instead of giving us new ones. Might give us more inodes!
 //	fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever - this might be enabled, if nfs is making troubles!
 
-/*
-	// Set the userid
+
+/*	// Set the userid
 	char uidbuffer[128];
 	snprintf(uidbuffer, sizeof(uidbuffer), "-ouser_id=%i", config->user_uid);
 	fuseargs.push_back(uidbuffer);
@@ -261,14 +261,16 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	char gidbuffer[128];
 	snprintf(gidbuffer, sizeof(gidbuffer), "-ogroup_id=%i", config->user_gid);
 	fuseargs.push_back(gidbuffer);
-*/
-	if (!config->deamonize) {
+
+*/	
+	if (!config->deamonize()) {
 		fuseargs.push_back("-f");
 	}
-	
 
 	fuseargs.push_back("--");
-	fuseargs.push_back(config->mountpoint.c_str());
+	std::string mountpoint = config->mountpoint();
+	std::cout << mountpoint.c_str();
+	fuseargs.push_back(mountpoint.c_str());
 
 	std::cout << "Starting fuse with the following arguments: " << std::endl;
 	for (auto arg : fuseargs) {

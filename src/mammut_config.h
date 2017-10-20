@@ -10,6 +10,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <functional>
 
 namespace libconfig {
 class Config;
@@ -21,22 +22,46 @@ class ModuleResolver;
 
 class MammutConfig {
 public:
-	MammutConfig (const char *filename,
+	MammutConfig(const char *filename,
 	              int argc,
 	              char **argv,
 	              std::shared_ptr<ModuleResolver> resolver);
+	using changeable_callback = std::function<void(void)>;
+
+	void register_changeable(const std::string &key, changeable_callback monitor) {
+		changeables[key].push_back(monitor);
+	}
+	bool set_value(const std::string &key, const std::string& value) {
+		auto it = changeables.find(key);
+		if (it != changeables.end()) {
+			// Change and notify
+			manvalues[it->first] = value;
+			for(const auto &f : it->second) {
+				f();
+			}
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	// Drop the value that was manually overwritten either via command or commandline
+	// and read from configfile
+	void unset_value(const std::string &key) {
+		manvalues.erase(key);
+	}
 
 	void filterModules(std::shared_ptr<ModuleResolver> mods);
 
 	std::shared_ptr<ModuleResolver> resolver;
 
 	std::list<std::string> raids;
-	bool deamonize;
-	int64_t truncate_max_size;
-	std::string anon_username;
-	std::string username;
-	std::string mountpoint;
-	std::string anon_mapping_file;
+	bool deamonize() { return this->lookupValue<bool>("deamonize"); }
+	int64_t truncate_max_size() { return this->lookupValue<int64_t>("truncate_maxsize"); }
+	std::string anon_username() { return this->lookupValue<std::string>("anon_user_name"); }
+	std::string username() { return this->lookupValue<std::string>("username"); }
+	std::string mountpoint() { return this->lookupValue<std::string>("mountpoint"); }
+	std::string anon_mapping_file() { return this->lookupValue<std::string>("anon_mapping_file"); }
 
 	uid_t anon_uid;
 	uid_t anon_gid;
@@ -45,18 +70,37 @@ public:
 
 	char *const self;
 
+	template <typename _T>
+	_T lookupValue(const char *key, bool ignore_error = false) {
+		_T t;
+		this->lookupValue(key, t, ignore_error);
+		return t;
+	}
 
 	template <typename _T>
 	bool lookupValue(const char *key, _T &value, bool ignore_error = false) const {
 		std::cout << "Looking for " << key;
-		auto it = cmdline.find(key);
-		if (it != cmdline.end()) {
-			buf.clear();
-			buf.str(it->second);
-			buf >> value;
-			std::cout << " [cmd] " << value << std::endl;
-			return true;
-		} else {
+		{
+			auto it = manvalues.find(key);
+			if (it != manvalues.end()) {
+				buf.clear();
+				buf.str(it->second);
+				buf >> value;
+				std::cout << " [cmd] " << value << std::endl;
+				return true;
+			}
+		}
+		{
+			auto it = cmdline.find(key);
+			if (it != cmdline.end()) {
+				buf.clear();
+				buf.str(it->second);
+				buf >> value;
+				std::cout << " [cmd] " << value << std::endl;
+				return true;
+			}
+		}
+		{
 			const char *tmp;
 			bool state = config->lookupValue(key, tmp);
 			if (state) {
@@ -77,8 +121,13 @@ public:
 	// todo database shit
 private:
 	mutable std::istringstream buf;
+	std::map<std::string, std::string> manvalues;
 	std::map<std::string, std::string> cmdline;
+	std::map<std::string, std::list<changeable_callback>> changeables;
 	std::shared_ptr<libconfig::Config> config;
+
+	void update_anonuser();
+	void update_user();
 };
 
 }

@@ -29,7 +29,7 @@ int Module::find_raid(std::string &path) {
 	}
 
 	for (const auto &raid : config->raids) {
-		std::string to_test = raid + "/" + modname + "/" + config->username;
+		std::string to_test = raid + "/" + modname + "/" + config->username();
 
 		this->log(LOG_LEVEL::INFO, std::string("Testing raid " + to_test));
 		struct stat statbuf;
@@ -126,13 +126,13 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 	}
 
 	// Eliminate all User-IDs from the items
-//	statbuf->st_uid = config->anon_uid;
-//	statbuf->st_gid = config->anon_gid;
+	//statbuf->st_uid = config->anon_uid;
+	//statbuf->st_gid = config->anon_gid;
 	return retstat;
 }
 
 
-int Module::readlink(const char *path, char *link, size_t size) {
+int Module::readlink(const char *path, char */*link*/, size_t /*size*/) {
 	this->trace("readlink", path);
 	return -ENOTSUP;
 	// It can be dangerous reading arbitrary symlinks. We need to do a lot of
@@ -286,7 +286,7 @@ int Module::truncate(const char *path, off_t newsize) {
 		return retstat;
 	}
 
-	if (newsize > config->truncate_max_size) {
+	if (newsize > config->truncate_max_size()) {
 		struct stat st;
 		memset(&st, 0, sizeof(st));
 		if (::stat(translated.c_str(), &st) != 0) {

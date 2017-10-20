@@ -59,46 +59,26 @@ MammutConfig::MammutConfig(const char *filename,
 
 	auto &settings_raid = config->lookup("raids");
 	for (auto it = settings_raid.begin(); it != settings_raid.end(); ++it) {
-		raids.push_back(*it);
+		raids.push_back(it->c_str());
 	}
 	for (const auto &e : raids) {
 		std::cout << "Using RAID: " << e << std::endl;
 	}
 
-	lookupValue("mountpoint", mountpoint);
-	lookupValue("deamonize", deamonize);
-	lookupValue("truncate_maxsize", truncate_max_size);
-	lookupValue("anon_user_name", anon_username);
-	lookupValue("anon_mapping_file", anon_mapping_file);
-	lookupValue("username", username);
+	// access all values once, so the startup will fail if a value is missing
+	this->mountpoint();
+	this->deamonize();
+	this->truncate_max_size();
+	this->anon_username();
+	this->anon_mapping_file();
+	this->username();
 
+	this->update_anonuser();
+	this->update_user();
 
-	struct passwd *passwd_info = getpwnam(anon_username.c_str());
-	if (passwd_info == NULL) {
-		std::cerr << "Could not find anonymous user \"" << anon_username
-		          << "\"" << std::endl;
-		exit(-1);
-	}
-	anon_uid = passwd_info->pw_uid;
-	anon_gid = passwd_info->pw_gid;
-
-	std::cout << "Anonymous User: " << anon_username
-		<< " UID " << anon_uid
-	   	<< " GID " << anon_gid << std::endl;
-
-	passwd_info = getpwnam(username.c_str());
-	if (passwd_info == NULL) {
-		std::cerr << "Could not find user \"" << username
-		          << "\"" << std::endl;
-		exit(-1);
-	}
-	user_uid = passwd_info->pw_uid;
-	user_gid = passwd_info->pw_gid;
-
-	std::cout << "Operating User: " << username
-		<< " UID " << user_uid
-	   	<< " GID " << user_gid << std::endl;
-
+	this->register_changeable("anon_username", [this](){
+			this->update_anonuser();
+		});
 }
 
 void MammutConfig::filterModules(std::shared_ptr<ModuleResolver> mods) {
@@ -123,4 +103,33 @@ void MammutConfig::filterModules(std::shared_ptr<ModuleResolver> mods) {
 	free(data);
 }
 
+void MammutConfig::update_anonuser() {
+	struct passwd *passwd_info = getpwnam(anon_username().c_str());
+	if (passwd_info == NULL) {
+		std::cerr << "Could not find anonymous user \"" << anon_username()
+		          << "\"" << std::endl;
+		exit(-1);
+	}
+	anon_uid = passwd_info->pw_uid;
+	anon_gid = passwd_info->pw_gid;
+
+	std::cout << "Anonymous User: " << anon_username()
+	          << " UID " << anon_uid
+	          << " GID " << anon_gid << std::endl;
+}
+
+void MammutConfig::update_user() {
+	struct passwd *passwd_info = getpwnam(username().c_str());
+	if (passwd_info == NULL) {
+		std::cerr << "Could not find user \"" << username()
+		          << "\"" << std::endl;
+		exit(-1);
+	}
+	user_uid = passwd_info->pw_uid;
+	user_gid = passwd_info->pw_gid;
+
+	std::cout << "Operating User: " << username()
+	          << " UID " << user_uid
+	          << " GID " << user_gid << std::endl;
+}
 }

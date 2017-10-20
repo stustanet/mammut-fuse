@@ -23,7 +23,7 @@ public:
 
 	int getattr(const char *path, struct stat *statbuf) override {
 		if (strcmp(path, "/") == 0) {
-			int retval = Module::getattr(path, statbuf);
+			/*int retval = */Module::getattr(path, statbuf);
 			// Owner for / needs to be root - else chroot for ftp and friends wont work.
 			statbuf->st_uid         = 0; //config->anon_uid;
 			statbuf->st_gid         = 0; //config->anon_gid;

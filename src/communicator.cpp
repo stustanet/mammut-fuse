@@ -24,7 +24,7 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	config(config) {
 	std::string socketname;
 	config->lookupValue("socket_directory", socketname);
-	socketname += "/" + config->username;
+	socketname += "/" + config->username();
 
 	std::cout << "Using socket " << socketname << std::endl;
 
@@ -66,7 +66,7 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 		});
 
 	register_void_command("USER", [this](const std::string &) {
-			this->send(this->config->username);
+			this->send(this->config->username());
 		});
 
 	
@@ -85,11 +85,12 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 			if (pos != std::string::npos) {
 				key = kvpair.substr(0, pos);
 				value = kvpair.substr(pos+1);
+				this->config->set_value(key, value);
+				return true;
 			} else {
 				return false;
 			}
-			this->config.set_value(key, value)
-		}, "SETCONFIG:<key>=<value>");
+		}, "SETCONFIG:<key>=<value> - will only work for certain enabled keys");
 }
 
 Communicator::~Communicator() {
@@ -112,7 +113,7 @@ void Communicator::thread_send() {
 			std::deque<int> to_delete;
 			for (int sock : connected_sockets) {
 				int nsnd = ::send(sock, data.c_str(), data.size(), 0);
-				if (nsnd < 0 || errno != 0) {
+				if (nsnd < 0 && errno != 0) {
 					perror("write");
 					to_delete.push_back(sock);
 				}

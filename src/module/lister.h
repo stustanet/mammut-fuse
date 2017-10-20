@@ -20,6 +20,11 @@ public:
 				return rescan();
 			});
 
+		// When the mapping file changes, rescan the file
+		config->register_changeable("anon_mapping_file", [this]() {
+				rescan();
+			});
+
 		rescan();
 	}
 
@@ -148,8 +153,8 @@ public:
 private:
 	bool rescan() {
 		// Read the mapping file
-		std::cout << "reading file: " << config->anon_mapping_file << std::endl;
-		std::ifstream file(config->anon_mapping_file, std::ios::in);
+		std::cout << "reading file: " << config->anon_mapping_file() << std::endl;
+		std::ifstream file(config->anon_mapping_file(), std::ios::in);
 		if (!file) {
 			std::cout << "Error opening anon mapping file" << std::endl;
 			return false;
@@ -162,8 +167,8 @@ private:
 				continue;
 			}
 			auto p = std::make_pair(
-				      		line.substr(0, split),
-				            line.substr(split+1));
+				line.substr(0, split),
+				line.substr(split+1));
 			list.insert(p);
 		//	std::cout << "ANON: " << p.first << " ----> " << p.second << std::endl;
 		}

@@ -35,10 +35,8 @@ add_definitions(" -ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 -Wall -Wextra
 -pedantic")
 add_executable(mammutfs ${SOURCES} ${HEADERS})
 
-target_link_libraries(mammutfs ${CONFIG++_LIBRARY})
-target_link_libraries(mammutfs ${FUSE_LIBRARIES})
-target_link_libraries(mammutfs pthread)
+target_link_libraries(mammutfs ${CONFIG++_LIBRARY} ${FUSE_LIBRARIES} pthread)
 
-set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
+set_property(TARGET mammutfs PROPERTY CXX_STANDARD 17)
 
 
