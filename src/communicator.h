@@ -38,7 +38,7 @@ public:
 	virtual ~Communicator();
 
 	void send(const std::string &data);
-	void inotify (const std::string &operation, const std::string &path);
+	void inotify (const std::string &operation, const std::string &path, const std::string &path2 = "");
 
 	using command_callback = std::function<bool(const std::string &data)>;
 	void register_command(const std::string &command,

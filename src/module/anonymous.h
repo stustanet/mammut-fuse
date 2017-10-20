@@ -31,12 +31,12 @@ public:
 		return i;
 	}
 
-	virtual int rename(const char *a, const char *b) {
-		int i = Module::rename(a, b);
-		std::string from = a;
-		from += " -> ";
-		from += b;
-		inotify("RENAME", from);
+	virtual int rename(const char *sourcepath,
+	                   const char *newpath,
+	                   const char *sourcepath_raw,
+	                   const char *newpath_raw) {
+		int i = Module::rename(sourcepath, newpath, sourcepath_raw, newpath_raw);
+		this->comm->inotify("RENAME", sourcepath_raw, newpath_raw);
 		return i;
 	}
 

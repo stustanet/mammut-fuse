@@ -58,18 +58,18 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 
 	register_void_command("HELP", [this](const std::string &) {
 			std::stringstream ss;
-			ss << "All supported commands: " << std::endl;
+			ss << "commands:[";
 			for (const auto &v : this->commands) {
-				ss << v.first << std::endl;
+				ss << "\"" << v.first << "\",";
 			}
-			this->send(ss.str());
+				ss << "]";
+				this->send(ss.str());
 		});
 
 	register_void_command("USER", [this](const std::string &) {
 			this->send(this->config->username());
 		});
 
-	
 	register_void_command("CONFIG", [this](const std::string &confkey) {
 			std::string str;
 			if (this->config->lookupValue(confkey.c_str(), str, true)) {
@@ -202,11 +202,16 @@ void Communicator::send(const std::string &data) {
 }
 
 void Communicator::inotify(const std::string &operation,
-                           const std::string &path) {
+                           const std::string &path,
+                           const std::string &path2) {
 	sstrbuf.str("");
 	sstrbuf.clear();
 	sstrbuf << "{\"op\":\"" << operation
-	        << "\",\"path\":\"" << path << "\"}" << std::endl;
+	        << "\",\"path\":\"" << path << "\"";
+	if (path2 != "") {
+		sstrbuf << ", \"path2\":\"" << path2 << "\"";
+	}
+	sstrbuf << "}" << std::endl;
 	send(sstrbuf.str());
 }
 

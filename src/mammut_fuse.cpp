@@ -67,13 +67,14 @@ static int mammut_rename(const char *path, const char *newpath) {
 	{
 		GETMODULE(path);
 		int retval = module->translatepath(subdir, from_translated);
-		if (!retval) {
+		if (retval) {
+			std::cout << "Could not translate from path (" << path << "), " << subdir << std::endl;
 			return retval;
 		}
 	}
 
 	GETMODULE(newpath);
-	return module->rename(from_translated.c_str(), subdir);
+	return module->rename(from_translated.c_str(), subdir, path, newpath);
 }
 
 static int mammut_link(const char *path, const char *newpath) {

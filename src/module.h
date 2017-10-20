@@ -89,7 +89,7 @@ public:
 	virtual int symlink(const char *, const char *);
 
 	/** Rename a file */
-	virtual int rename(const char *, const char *);
+	virtual int rename(const char *from, const char *to, const char *from_raw, const char *to_raw);
 
 	/** Change the permission bits of a file */
 	virtual int chmod(const char *, mode_t);

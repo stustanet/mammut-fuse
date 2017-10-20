@@ -235,16 +235,20 @@ int Module::symlink(const char *path, const char *) {
 }
 
 
-int Module::rename(const char *realpath, const char *newpath) {
-	this->trace("rename", realpath, newpath);
+int Module::rename(const char *sourcepath,
+                   const char *newpath,
+                   const char */*sourcepath_raw*/,
+                   const char */*newpath_raw*/) {
+	this->trace("rename", sourcepath, newpath);
 
 	int retstat = 0;
-	std::string translated;
-	if ((retstat = this->translatepath(newpath, translated))) {
+	std::string to_translated;
+	if ((retstat = this->translatepath(newpath, to_translated))) {
+		std::cout << "\n\nTO\n\n";
 		return retstat;
 	}
 
-	if ((retstat = ::rename(realpath, translated.c_str())) < 0) {
+	if ((retstat = ::rename(sourcepath, to_translated.c_str()) < 0)) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_rename rename");
 	}

@@ -31,12 +31,13 @@ public:
 		return ret;
 	}
 
-	virtual int rename(const char *a, const char *b) {
-		int ret = Module::rename(a, b);
-		std::string from = a;
-		from += " -> ";
-		from += b;
-		inotify("RENAME", from);
+	virtual int rename(const char *sourcepath,
+	                   const char *newpath,
+	                   const char *sourcepath_raw,
+	                   const char *newpath_raw) {
+		std::cout << "from " << sourcepath_raw << " to " << newpath_raw << std::endl;
+		int ret = Module::rename(sourcepath, newpath, sourcepath_raw, newpath_raw);
+		this->comm->inotify("RENAME", sourcepath_raw, newpath_raw);
 		return ret;
 	}
 
@@ -61,8 +62,8 @@ public:
 protected:
 	void inotify(const std::string &name, const std::string &path) {
 		std::string translated;
-		this->translatepath(path, translated);
-		this->comm->inotify(name, translated);
+//		this->translatepath(path, translated);
+		this->comm->inotify(name, path);
 	}
 private:
 	std::shared_ptr<Communicator> comm;
