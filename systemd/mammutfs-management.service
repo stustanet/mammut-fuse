@@ -1,0 +1,18 @@
+[Unit]
+Description=Mammutfs Management Service
+After=raidmounts.target
+
+[Service]
+Type=simple
+User=nobody
+Group=nobody
+WorkingDirectory=/usr/local/sbin/mammut-fuse
+ExecStart=/usr/local/sbin/mammut-fuse/mammutfsd/venv/bin/python3 /usr/local/sbin/mammut-fuse/mammutfsd/mammutfsd.py --socket_directory=/run/mammutfs_sockets --interactive=no
+Restart=always
+RuntimeDirectory=mammutfs_sockets
+# Anybody has to be able create sockets there
+RuntimeDirectoryMode=777
+
+[Install]
+WantedBy=multi-user.target
+
