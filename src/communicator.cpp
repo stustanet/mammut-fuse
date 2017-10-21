@@ -43,6 +43,11 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	int retval = bind(connect_socket,
 	                  (struct sockaddr *) &socket_addr,
 	                  sizeof(socket_addr));
+	if (retval < 0) {
+		perror("bind");
+		exit(-1);
+	}
+
 	retval = listen(connect_socket, 20);
 	if (retval < 0) {
 		perror("bind");

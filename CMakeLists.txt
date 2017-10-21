@@ -37,6 +37,6 @@ add_executable(mammutfs ${SOURCES} ${HEADERS})
 
 target_link_libraries(mammutfs ${CONFIG++_LIBRARY} ${FUSE_LIBRARIES} pthread)
 
-set_property(TARGET mammutfs PROPERTY CXX_STANDARD 17)
+set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
 
 
