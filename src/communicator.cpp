@@ -16,7 +16,7 @@
 #include <string>
 #include <memory>
 #include <utility>
-
+#include <syslog.h>
 
 namespace mammutfs {
 
@@ -25,14 +25,22 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	std::string socketname;
 	config->lookupValue("socket_directory", socketname);
 	socketname += "/" + config->username();
-
 	std::cout << "Using socket " << socketname << std::endl;
+	if(unlink(socketname.c_str()) && errno != ENOENT) {
+		char buffer[1024] = {0};
+		strcat(buffer, "Communication socket failed: unlink: ");
+		strcat(buffer, strerror(errno));
+		syslog(LOG_ERR, buffer);
+		fprintf(stderr, buffer);
+	}
 
-	unlink(socketname.c_str());
-
-	connect_socket = ::socket(AF_UNIX, SOCK_SEQPACKET, 0);
+	connect_socket = ::socket(AF_UNIX, SOCK_STREAM, 0);
 	if (connect_socket < 0) {
-		perror("socket");
+		char buffer[1024] = {0};
+		strcat(buffer, "Communication socket failed: socket: ");
+		strcat(buffer, strerror(errno));
+		syslog(LOG_ERR, buffer);
+		fprintf(stderr, buffer);
 		exit(-1);
 	}
 
@@ -44,31 +52,32 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	                  (struct sockaddr *) &socket_addr,
 	                  sizeof(socket_addr));
 	if (retval < 0) {
-		perror("bind");
+		char buffer[1024] = {0};
+		strcat(buffer, "Communication socket failed: bind: ");
+		strcat(buffer, strerror(errno));
+		syslog(LOG_ERR, buffer);
+		fprintf(stderr, buffer);
 		exit(-1);
 	}
 
 	retval = listen(connect_socket, 20);
 	if (retval < 0) {
-		perror("bind");
+		char buffer[1024] = {0};
+		strcat(buffer, "Communication socket failed: listen: ");
+		strcat(buffer, strerror(errno));
+		syslog(LOG_ERR, buffer);
+		fprintf(stderr, buffer);
 		exit(-1);
 	}
 
-	running = true;
-	thrd_send = std::make_unique<std::thread>(
-		std::bind(&Communicator::thread_send, this));
-	thrd_recv = std::make_unique<std::thread>(
-		std::bind(&Communicator::thread_recv, this));
-
-
 	register_void_command("HELP", [this](const std::string &) {
 			std::stringstream ss;
-			ss << "commands:[";
+			ss << "{'commands':[";
 			for (const auto &v : this->commands) {
 				ss << "\"" << v.first << "\",";
 			}
-				ss << "]";
-				this->send(ss.str());
+			ss << "]}";
+			this->send(ss.str());
 		});
 
 	register_void_command("USER", [this](const std::string &) {
@@ -78,9 +87,11 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	register_void_command("CONFIG", [this](const std::string &confkey) {
 			std::string str;
 			if (this->config->lookupValue(confkey.c_str(), str, true)) {
-				this->send(str);
+				std::stringstream ss;
+				ss << "{\"state\":\"success\",\"value\":\"" << str << "\"}";
+				this->send(ss.str());
 			} else {
-				this->send("{'state':'error','error':'could not find config value'}");
+				this->send("{\"state\":\"error\",\"error\":\"could not find config value\"}");
 			}
 		}, "CONFIG:<key>");
 
@@ -108,10 +119,20 @@ Communicator::~Communicator() {
 	}
 }
 
+void Communicator::start() {
+	this->running = true;
+	this->thrd_recv = std::make_unique<std::thread>(
+		std::bind(&Communicator::thread_recv, this));
+	this->thrd_send = std::make_unique<std::thread>(
+		std::bind(&Communicator::thread_send, this));
+
+}
+
 void Communicator::thread_send() {
 	while (running) {
 		std::string data;
 		queue.dequeue(&data);
+		data = data + "\n";
 		if (!connected_sockets.empty()) {
 			std::cout << "Sending data: " << data << std::endl;
 			errno = 0;
@@ -145,7 +166,7 @@ void Communicator::thread_recv() {
 	ev.events = EPOLLIN;
 	ev.data.fd = connect_socket;
 	if (epoll_ctl(pollingfd, EPOLL_CTL_ADD, connect_socket, &ev) != 0) {
-		perror("epoll_ctl");
+		perror("main - epoll_ctl");
 	}
 
 	struct epoll_event pevents[20];
@@ -175,7 +196,7 @@ void Communicator::thread_recv() {
 				int nrcv = read(pevents[i].data.fd, buffer, sizeof(buffer));
 				if (nrcv < 0) {
 					perror("recv");
-					break;
+					continue;
 				}
 				buffer[sizeof(buffer)-1] = '\0';
 				execute_command(std::string(buffer));

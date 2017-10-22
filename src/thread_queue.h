@@ -10,12 +10,11 @@ class SafeQueue
 {
 public:
 	SafeQueue() {}
-
 	~SafeQueue(void) {}
 
 	// Add an element to the queue.
 	void enqueue(const T &t) {
-		std::lock_guard<std::mutex> lock(mutex);
+		std::unique_lock<std::mutex> lock(mutex);
 		queue.push(t);
 		cond.notify_one();
 	}

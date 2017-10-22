@@ -35,6 +35,9 @@ class Communicator {
 public:
 	Communicator (std::shared_ptr<MammutConfig> config);
 
+	/* Start the threads */
+	void start();
+
 	virtual ~Communicator();
 
 	void send(const std::string &data);

@@ -8,6 +8,9 @@
 #include <iostream>
 
 #include <syslog.h>
+#include <unistd.h>
+// Forward declare to create the main mount point
+extern void setup_main();
 
 namespace mammutfs {
 
@@ -210,8 +213,7 @@ static int mammut_create(const char *path,
 	return module->create(subdir, mode, fi);
 }
 
-static int mammut_utimens(const char *path,
-						 const struct timespec tv[2]) {
+static int mammut_utimens(const char *path, const struct timespec tv[2]) {
 	GETMODULE(path);
 	return module->utimens(subdir, tv);
 }
@@ -219,10 +221,12 @@ static int mammut_utimens(const char *path,
 void *mammut_init(struct fuse_conn_info *conn) {
 	if (conn->capable & FUSE_CAP_EXPORT_SUPPORT) {
 		conn->want |= FUSE_CAP_EXPORT_SUPPORT;
-		syslog(LOG_WARNING, "setting FUSE_CAP_EXPORT_SUPPORT");
 	} else {
 		syslog(LOG_ERR, "ERROR NOT SETTING FUSE_CAP_EXPORT_SUPPORT");
 	}
+
+	setup_main();
+
 	return &userdata;
 }
 
@@ -234,7 +238,6 @@ void mammut_destroy(void *userdata) {
 
 void mammut_main (std::shared_ptr<ModuleResolver> resolver,
                   std::shared_ptr<MammutConfig> config) {
-
 	openlog("mammutfs", LOG_PID, 0);
 
 	userdata.resolver = resolver;
@@ -250,20 +253,9 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	fuseargs.push_back("-odefault_permissions"); // To allow us to set permissions
 	fuseargs.push_back("-oallow_other");         // To enable smb
 	fuseargs.push_back("-ouse_ino");             // Copy the underlying inodes instead of giving us new ones. Might give us more inodes!
-//	fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever - this might be enabled, if nfs is making troubles!
+//	fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever 
+                                                     //- this might be enabled, if nfs is making troubles!
 
-
-/*	// Set the userid
-	char uidbuffer[128];
-	snprintf(uidbuffer, sizeof(uidbuffer), "-ouser_id=%i", config->user_uid);
-	fuseargs.push_back(uidbuffer);
-	
-	// set the gid
-	char gidbuffer[128];
-	snprintf(gidbuffer, sizeof(gidbuffer), "-ogroup_id=%i", config->user_gid);
-	fuseargs.push_back(gidbuffer);
-
-*/	
 	if (!config->deamonize()) {
 		fuseargs.push_back("-f");
 	}
@@ -322,8 +314,17 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	                          const_cast<char**>(fuseargs.data()),
 	                          &mammut_ops,
 	                          &userdata);
-
-	fprintf(stderr, "fuse_main returned %d\n", fuse_stat);
+	
+	if (fuse_stat) {
+		std::stringstream ss;
+		ss << "Fuse Failed: " << strerror(errno);
+		if (errno == EPERM) {
+			ss << " user " << config->username() << " needs write access to " << config->mountpoint();
+		}
+		syslog(LOG_ERR, ss.str().c_str());
+		std::cerr << ss.str();
+	}
+	fprintf(stdout, "%d Thanks for using mammutfs, with best regards - StuStaNet.\n", fuse_stat);
 }
 
 }

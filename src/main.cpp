@@ -10,8 +10,20 @@
 #include "module/backup.h"
 #include "module/lister.h"
 
+#include <sstream>
+#include <memory>
+
+#include <syslog.h>
+
+static std::shared_ptr<mammutfs::ModuleResolver> resolver;
+static std::shared_ptr<mammutfs::MammutConfig> config;
+static std::shared_ptr<mammutfs::Communicator> communicator;
+
 int main(int argc, char **argv) {
+	openlog("mammutfs", LOG_PID, 0);
+
 	const char *configfile = "mammutfs.cfg";
+
 	if (argc < 2) {
 		std::cout << "You did not specify a config file (as first argument), \n"
 		          << "using default one at " << configfile << std::endl;
@@ -23,14 +35,25 @@ int main(int argc, char **argv) {
 	}
 
 	// Setting up the resolver, that manages active modules
-	auto resolver = std::make_shared<mammutfs::ModuleResolver>();
+	resolver = std::make_shared<mammutfs::ModuleResolver>();
 	// Setting up the config that manges program wide configuration
-	auto config = std::make_shared<mammutfs::MammutConfig>(configfile,
-	                                                       argc,
-	                                                       argv,
-	                                                       resolver);
+	config = std::make_shared<mammutfs::MammutConfig>(configfile,
+	                                                  argc,
+	                                                  argv,
+	                                                  resolver);
 	// Setting up the communicator, that manges the unix socket
-	auto communicator = std::make_shared<mammutfs::Communicator>(config);
+	communicator = std::make_shared<mammutfs::Communicator>(config);
+
+	// Hit the road
+	//
+	// This will fork, and afterwards call setup_main
+	mammutfs::mammut_main(resolver, config);
+}
+
+void setup_main() {
+	// Start the communicator threads
+	communicator->start();
+
 
 	/// Add all Modules to the following list
 	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config));
@@ -43,6 +66,10 @@ int main(int argc, char **argv) {
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
 
-	// Hit the road
-	mammutfs::mammut_main(resolver, config);
+
+	std::stringstream ss;
+	ss << "New Mammutfs for user " << config->username() << " at " << config->mountpoint();
+	syslog(LOG_INFO, ss.str().c_str());
+
+	std::cerr << ss.str().c_str();
 }
