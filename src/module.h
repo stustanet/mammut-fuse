@@ -1,8 +1,14 @@
 #pragma once
 
+#include "mammut_config.h"
+
+#include <unordered_map>
+#include <map>
+
 #include <fuse.h>
 
-#include "mammut_config.h"
+// Forward declare DIR in order to not include
+#include <dirent.h>
 
 namespace mammutfs {
 
@@ -309,10 +315,83 @@ public:
 	virtual int utimens(const char *, const struct timespec tv[2]);
 
 protected:
+	/** Reference to the global config file */
 	std::shared_ptr<MammutConfig> config;
+
+	/** Name of the module to be set by child classes */
 	std::string modname;
+
+	/** The basepath that should be used to translate the path */
 	std::string basepath;
+
+	/** The currently set log level */
 	LOG_LEVEL max_loglvl = LOG_LEVEL::TRACE;
+
+	/**************************************************************************
+	 * Since multiple accesses to many different files can overload the open
+	 * file descriptors. it is necessary to encapsulate these file descriptors.
+	 * An open file is stored in a local map
+	 * This file-handle is handling a native file descriptor until the limit
+	 * max_native_fds is reached. above this limit, a file is opened for every
+	 * use and reopened again upon access.
+	 * This enables to have more open files than the kernel supports without
+	 * raising the native limits.
+	 */
+protected:
+	/**
+	 * Represents an open file.
+	 */
+	struct open_file_t {
+		std::string path; // lives in the maps key.
+		bool is_open;
+		bool has_changed;
+		enum { FILE, DIRECTORY, UNSPEC } type;
+		int flags;
+		union {
+			int32_t fd;
+			DIR *dp;
+		} fh;
+	};
+private:
+	// The list of open files - and our internal file descriptors.
+	// It is not supported generally to use 64 bit fds.
+	std::unordered_map<std::string, open_file_t> open_files;
+	
+	// The maximum number of files that are to be represented natively.
+	// If the size of open_files reaches the limit, newly allocated files
+	// are stored temporarily
+	size_t max_native_fds; 
+
+protected:
+	class open_file_handle_t {
+		friend class Module;
+		open_file_t *file;
+		const bool should_close;
+		open_file_handle_t(open_file_t *, bool should_close);
+	public:
+		open_file_handle_t(open_file_handle_t &&rhs);
+		bool changed() {
+			return this->file->has_changed;
+		}
+		int fd();
+		DIR *dp();
+
+		~open_file_handle_t();
+	};
+
+	/**
+	 * will generate an open_file_handle for the given path.
+	 *
+	 * The path has to exist on the filesystem, so it has to be translated
+	 * beforehand.
+	 * This has to be used whenever a file handle is required.
+	 */
+	open_file_handle_t file(const std::string &);
+	
+	void close_file(const char *path); // TODO: This has to be called in rename
+	void close_file(const std::string &path);
+
+	void dump_open_files(std::ostream &);
 };
 
 } // mammutfs

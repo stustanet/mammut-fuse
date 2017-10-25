@@ -101,6 +101,7 @@ build
 /.emacs.desktop.lock
 *.elc
 auto-save-list
+auto
 tramp
 .\#*
 

@@ -48,8 +48,20 @@ public:
 	}
 
 	virtual int release(const char *path, struct fuse_file_info *fi) {
+		bool changed = false;
+		{
+			// The path is invalid after a release - so better not safe any
+			// reference to it.
+			std::string translated;
+			this->translatepath(path, translated);
+			auto f = file(translated);
+			changed = f.changed();
+		}
 		int ret = Module::release(path, fi);
 		inotify("RELEASE", path);
+		if (changed) {
+			inotify("CHANGED", path);
+		}
 		return ret;
 	}
 
@@ -61,8 +73,11 @@ public:
 
 protected:
 	void inotify(const std::string &name, const std::string &path) {
-		std::string translated;
+		// TODO Check if we need to prepend the current user id to create a
+		// "real" indexable path
+//		std::string translated;
 //		this->translatepath(path, translated);
+		this->log(LOG_LEVEL::INFO, name, path);
 		this->comm->inotify(name, path);
 	}
 private:

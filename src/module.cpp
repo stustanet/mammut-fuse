@@ -8,10 +8,18 @@
 #include <iostream>
 #include <sstream>
 
+#include <syslog.h>
+
 namespace mammutfs {
 
 Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config) :
-	config(config), modname(modname) {
+	config(config), modname(modname), max_native_fds(0) {
+	config->lookupValue("max_native_fds", this->max_native_fds);
+
+	config->register_changeable("max_native_fds", [this]() {
+			this->config->lookupValue("max_native_fds", this->max_native_fds);
+			// TODO maybe close enough files to reach the limit
+		});
 }
 
 
@@ -19,6 +27,7 @@ int Module::translatepath(const std::string &path, std::string &out) {
 	std::string basepath;
 	int retval = find_raid(basepath);
 	out = basepath + path;
+	//std::cout << "Translated from " << path << " to " << out << std::endl;
 	return retval;
 }
 
@@ -56,7 +65,6 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 		return;
 	}
 
-
 	std::string prefix, suffix = "\033[0m";
 	switch(lvl) {
 	case LOG_LEVEL::TRACE:
@@ -75,17 +83,158 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 		break;
 	}
 
-	std::cout << prefix << "[" << modname << "] " << suffix << msg;
+	std::stringstream ss;
+	ss <<  "[" << modname << "] " << suffix << msg;
 	if (path != "") {
-		std::cout << ": " << path;
+		ss << ": " << path;
 	}
-	std::cout << std::endl;
+	std::cout << prefix << ss.str() << "\033[0m" << std::endl;
+
+	// Maybe Log WRN and ERR to syslog
+	switch(lvl) {
+	default:
+	case LOG_LEVEL::TRACE:
+	case LOG_LEVEL::INFO:
+		break;
+	case LOG_LEVEL::WRN:
+		syslog(LOG_WARNING, ss.str().c_str());
+		break;
+	case LOG_LEVEL::ERR:
+		syslog(LOG_ERR, ss.str().c_str());
+		break;
+	}
 }
 
 void Module::trace(const std::string &method,
                    const std::string &path,
                    const std::string &second_path) {
 	log(LOG_LEVEL::TRACE, method + " ", path + " " + second_path);
+}
+
+
+// A default file handle does nothing
+Module::open_file_handle_t::open_file_handle_t(open_file_t *f, bool close) :
+	file(f),
+	should_close(close) {
+	std::cout << "\tHandle " << this->file->path << std::endl;
+}
+
+Module::open_file_handle_t::open_file_handle_t(open_file_handle_t &&rhs) :
+	file(rhs.file),
+	should_close(rhs.should_close) {
+	rhs.file = nullptr;
+	std::cout << "Moving context" << std::endl;
+}
+
+// Closes the file upon leaving the control structure, releasing its contents
+// and especially its precious file descriptors.
+Module::open_file_handle_t::~open_file_handle_t() {
+	if (this->file != nullptr) {
+		if (this->should_close && this->file->is_open) {
+			std::cout << "\tClosing " << this->file->path << std::endl;
+			switch(this->file->type) {
+			case open_file_t::FILE:
+				close(this->file->fh.fd);
+				break;
+			case open_file_t::DIRECTORY:
+				closedir(this->file->fh.dp);
+				break;
+			default:
+				break;
+			}
+			this->file->is_open = false;
+		}
+	}
+}
+
+int Module::open_file_handle_t::fd() {
+	if (this->file->type != open_file_t::FILE) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (!this->file->is_open) {
+		std::cout << "\tOpening file " << this->file->path << std::endl;
+		// Remember R/W status, and set the remaining stuff correctly
+		int flags = (this->file->flags & (O_RDONLY | O_WRONLY | O_RDWR)) | O_NOFOLLOW | O_APPEND;
+		this->file->fh.fd = ::open(this->file->path.c_str(), flags);
+		std::cout << "\tFD: " << this->file->fh.fd << std::endl
+		          << "mode: " << ((flags & O_RDONLY)?"R":"")
+		          << ((flags & O_WRONLY)?"W":"")
+		          << ((flags & O_RDWR)?"B":"");
+		if (this->file->fh.fd < 0) {
+			std::cout << "ERROR opening file " << strerror(errno) << std::endl;
+		}
+		this->file->is_open = true;
+	}
+
+	return this->file->fh.fd;
+}
+
+DIR *Module::open_file_handle_t::dp() {
+	if (this->file->type != open_file_t::DIRECTORY) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (!this->file->is_open) {
+		std::cout << "\tOpening dir " << this->file->path << std::endl;
+		this->file->fh.dp = ::opendir(this->file->path.c_str());
+		this->file->is_open = true;
+	}
+
+	return this->file->fh.dp;
+}
+
+Module::open_file_handle_t Module::file(const std::string &path) {
+	// Check if there is already an open file.
+	// If not, create a open file structure, but do not assign any sane values
+	// to it, it is not possible to do that cleanly at this point.
+	// Finally, create a open_file_handle_t for this file.
+	// Use the number of open files as reference for the should_close flag;
+
+	open_file_t *file;
+	auto it = open_files.find(path);
+	if (it != open_files.end()) {
+		file = &it->second;
+	} else {
+		open_file_t f;
+		std::cout << "Creating new open file " << path << std::endl;
+		f.path = path; // TODO is this really neccessary?
+		f.is_open = false;
+		f.has_changed = false;
+		f.type = open_file_t::UNSPEC;
+		f.flags = 0;
+		f.fh.fd = -1;
+		file = &open_files.insert(std::make_pair(path, f)).first->second;
+	}
+
+	bool should_close = open_files.size() > max_native_fds;
+
+	return open_file_handle_t(file, should_close);
+}
+
+
+void Module::close_file(const std::string &path) {
+	// Test if the file was open, if so - remove it and close it.
+	auto it = open_files.find(path);
+	if (it != open_files.end()) {
+		open_files.erase(it);
+	}
+}
+
+void Module::close_file(const char *path) {
+	close_file(std::string(path));
+}
+
+
+void Module::dump_open_files(std::ostream &s) {
+	for (const auto &t : open_files) {
+		s << "{\"key\":\"" << t.first << "\","
+		  << "\"name\":\"" << t.second.path << "\","
+		  << "\"changed\":\"" << t.second.has_changed << "\","
+		  << "\"open\":\"" << t.second.is_open << "\"},";
+	}
 }
 
 int Module::getattr(const char *path, struct stat *statbuf) {
@@ -121,7 +270,7 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 			if (errno != ENOENT) {
 				perror("ERROR: getattr lstat");
 				this->log(LOG_LEVEL::WRN, "ERROR: getattr lstat ", translated);
-			}	
+			}
 		}
 	}
 
@@ -137,7 +286,7 @@ int Module::readlink(const char *path, char */*link*/, size_t /*size*/) {
 	return -ENOTSUP;
 	// It can be dangerous reading arbitrary symlinks. We need to do a lot of
 	// sanitizing to allow such things. Only relative symlinks within the
-	// module should be supported - if they are supported at all. 
+	// module should be supported - if they are supported at all.
 	// Symlinks are the most serious thread to mammut, everything else is
 	// pretty easy to contain.
 	/*this->trace("readlink", path);
@@ -176,7 +325,7 @@ int Module::mknod(const char *path, mode_t, dev_t) {
 
 int Module::mkdir(const char *path, mode_t mode) {
 	this->trace("mkdir", path);
-	
+
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
@@ -206,6 +355,8 @@ int Module::unlink(const char *path) {
 		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
 	}
 
+	this->close_file(translated);
+
 	return retstat;
 }
 
@@ -224,6 +375,8 @@ int Module::rmdir(const char *path) {
 		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
 	}
 
+	this->close_file(translated);
+
 	return retstat;
 }
 
@@ -237,9 +390,16 @@ int Module::symlink(const char *path, const char *) {
 
 int Module::rename(const char *sourcepath,
                    const char *newpath,
-                   const char */*sourcepath_raw*/,
+                   const char *sourcepath_raw,
                    const char */*newpath_raw*/) {
 	this->trace("rename", sourcepath, newpath);
+
+	std::cout << "RENAME:"
+	          << "\n\tsource " << sourcepath
+	          << "\n\traw:   " << sourcepath_raw
+	          << "\n\tdest:  " << newpath << std::endl;
+	dump_open_files(std::cout << "open files: ");
+	std::cout << std::endl;
 
 	int retstat = 0;
 	std::string to_translated;
@@ -251,7 +411,17 @@ int Module::rename(const char *sourcepath,
 	if ((retstat = ::rename(sourcepath, to_translated.c_str()) < 0)) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_rename rename");
+	} else {
+		// move a possible open file within the file hierarchy.
+		auto it = open_files.find(sourcepath_raw);
+		if (it != open_files.end()) {
+			auto cpy = it->second;
+			cpy.path = to_translated;
+			open_files.erase(it); // might invalidate iterators
+			open_files[to_translated] = cpy;
+		}
 	}
+
 	return retstat;
 }
 
@@ -306,6 +476,8 @@ int Module::truncate(const char *path, off_t newsize) {
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_truncate truncate");
+	} else {
+		this->file(translated).file->has_changed = true;
 	}
 
 	return retstat;
@@ -320,27 +492,37 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 		return retstat;
 	}
 
-	// TODO How not to follow symlinks?
-	fi->flags |= O_NOFOLLOW;	
+	// How not to follow symlinks
+	fi->flags |= O_NOFOLLOW;
 	int fd = ::open(translated.c_str(), fi->flags);
 	if (fd < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_open open");
+	} else {
+		auto f = this->file(translated);
+		f.file->type = open_file_t::FILE;
+		f.file->fh.fd = fd;
+		f.file->is_open = true;
+		f.file->has_changed = false;
+		f.file->flags = fi->flags;
 	}
-
-	// Store fd in fh, a user defined value;
-	fi->fh = fd;
 
 	return retstat;
 }
 
 
 int Module::read(const char *path, char *buf, size_t size, off_t offset,
-         struct fuse_file_info *fi) {
+                 struct fuse_file_info */*fi*/) {
 	this->trace("read", path);
 
-	// Take fd from fi->fh
-	int retstat = ::pread(fi->fh, buf, size, offset);
+	int retstat = 0;
+	std::string translated;
+	if ((retstat = this->translatepath(path, translated))) {
+		return retstat;
+	}
+	auto f = this->file(translated);
+
+	retstat = ::pread(f.fd(), buf, size, offset);
 	if (retstat < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_read read");
@@ -351,14 +533,27 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 
 
 int Module::write(const char *path, const char *buf, size_t size, off_t offset,
-          struct fuse_file_info *fi) {
+                  struct fuse_file_info */*fi*/) {
 	this->trace("write", path);
 
-	// Take fd from fi->fh
-	int retstat = ::pwrite(fi->fh, buf, size, offset);
+	dump_open_files(std::cout << "open files: ");
+	std::cout << std::endl;
+
+	int retstat = 0;
+	std::string translated;
+	if ((retstat = this->translatepath(path, translated))) {
+		return retstat;
+	}
+	auto f = this->file(translated);
+	int fd = f.fd();
+	retstat = ::pwrite(fd, buf, size, offset);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_write write");
+		std::stringstream ss;
+		ss << "ERROR write (fd: " << fd << "): " << strerror(errno) << std::endl;
+		this->log(LOG_LEVEL::WRN, ss.str());
+	} else {
+		f.file->has_changed = true;
 	}
 
 	return retstat;
@@ -388,34 +583,47 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 
 int Module::flush(const char *path, struct fuse_file_info *) {
 	this->trace("flush", path);
-
 	return 0;
 }
 
 
-int Module::release(const char *path, struct fuse_file_info *fi) {
+int Module::release(const char *path, struct fuse_file_info */*fi*/) {
 	this->trace("release", path);
-	(void)path;
-	int retstat = 0;
 
-	// We need to close the file. Had we allocated any resources
-	// (buffers etc) we'd need to free them here as well.
-	retstat = close(fi->fh);
+	int retstat = 0;
+	std::string translated;
+	if ((retstat = this->translatepath(path, translated))) {
+		return retstat;
+	}
+
+	auto f = this->file(translated);
+	if (f.file->is_open) {
+		retstat = close(f.fd());
+		f.file->is_open = false;
+		f.file->fh.fd = -1;
+	}
+
+	open_files.erase(path);
 
 	return retstat;
 }
 
 
-int Module::fsync(const char *path, int, struct fuse_file_info *fi) {
+int Module::fsync(const char *path, int, struct fuse_file_info */*fi*/) {
 	this->trace("fsync", path);
 
 	int retstat = 0;
-	retstat = ::fsync(fi->fh);
-
-	if (retstat < 0) {
-		errno = -retstat;
-		this->log(LOG_LEVEL::WRN, "mammut_fsync fsync");
-	}
+//	std::string translated;
+//	if ((retstat = this->translatepath(path, translated))) {
+//		return retstat;
+//	}
+//	auto f = this->file(translated);
+//	retstat = ::fsync(f.fd());
+//
+//	if (retstat < 0) {
+//		errno = -retstat;
+//		this->log(LOG_LEVEL::WRN, "mammut_fsync fsync");
+//	}
 
 	return retstat;
 }
@@ -445,7 +653,7 @@ int Module::removexattr(const char *path, const char *) {
 }
 
 
-int Module::opendir(const char *path, struct fuse_file_info *fi) {
+int Module::opendir(const char *path, struct fuse_file_info */*fi*/) {
 	this->trace("opendir", path);
 
 	int retstat = 0;
@@ -454,25 +662,35 @@ int Module::opendir(const char *path, struct fuse_file_info *fi) {
 		return retstat;
 	}
 
-
 	DIR *dp = ::opendir(translated.c_str());
 	if (dp == NULL) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_opendir opendir");
 		return retstat;
+	} else {
+		auto f = this->file(translated);
+		f.file->type = open_file_t::DIRECTORY;
+		f.file->fh.dp = dp;
+		f.file->is_open = true;
+		f.file->has_changed = false;
 	}
 
-	fi->fh = reinterpret_cast<intptr_t>(dp);
 	return 0;
 }
 
 
-int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
-            struct fuse_file_info *fi) {
+int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                    off_t offset, struct fuse_file_info */*fi*/) {
 	this->trace("readdir", path);
 	(void)offset;
 
-	DIR *dp = reinterpret_cast<DIR *>(fi->fh);
+	int retstat = 0;
+	std::string translated;
+	if ((retstat = this->translatepath(path, translated))) {
+		return retstat;
+	}
+	auto f = this->file(translated);
+	DIR *dp = f.dp();
 
 	if (dp == 0) {
 		return -EINVAL;
@@ -490,12 +708,21 @@ int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t o
 }
 
 
-int Module::releasedir(const char *path, struct fuse_file_info *fi) {
+int Module::releasedir(const char *path, struct fuse_file_info */*fi*/) {
 	this->trace("releasedir", path);
-	int retstat = 0;
 
-	DIR *dp = reinterpret_cast<DIR *>(fi->fh);
-	::closedir(dp);
+	int retstat = 0;
+	std::string translated;
+	if ((retstat = this->translatepath(path, translated))) {
+		return retstat;
+	}
+	auto f = this->file(translated);
+	if (f.file->is_open && f.file->type == open_file_t::DIRECTORY) {
+		retstat = ::closedir(f.dp());
+
+		f.file->is_open = false;
+	}
+	open_files.erase(path);
 
 	return retstat;
 }
@@ -520,7 +747,7 @@ int Module::access(const char *path, int mask) {
 }
 
 
-int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
+int Module::create(const char *path, mode_t mode, struct fuse_file_info */*fi*/) {
 	this->trace("create", path);
 
 	int retstat = 0;
@@ -534,10 +761,16 @@ int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	if (fd < 0) {
 		retstat = -errno;
 		this->log(LOG_LEVEL::WRN, "mammut_create creat");
+	} else {
+		// We do not like open files!
+		::close(fd);
+		auto f = this->file(translated);
+		f.file->type = open_file_t::FILE;
+		f.file->flags = O_APPEND | O_RDWR;
+		f.file->fh.fd = fd;
+		f.file->is_open = false;
+		f.file->has_changed = true;
 	}
-
-	// Store the fd in user defined storage in fi
-	fi->fh = fd;
 
 	return retstat;
 }
