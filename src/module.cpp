@@ -1,4 +1,5 @@
 #include "module.h"
+#include "config.h"
 
 #include <unistd.h>
 #include <dirent.h>
@@ -10,15 +11,45 @@
 
 #include <syslog.h>
 
+
 namespace mammutfs {
+
+static Module::LOG_LEVEL str_to_loglevel(const std::string &str) {
+	if ("TRACE" == str) {
+		return Module::LOG_LEVEL::TRACE;
+	} else if ("INFO" == str) {
+		return Module::LOG_LEVEL::INFO;
+	} else if ("WARN" == str) {
+		return Module::LOG_LEVEL::WRN;
+	} else if ("ERROR" == str) {
+		return Module::LOG_LEVEL::ERR;
+	} else {
+		// TODO WARN
+		std::cerr << "Could not convert loglevel, will use TRACE" << std::endl;
+		return Module::LOG_LEVEL::TRACE;
+	}
+}
+
 
 Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config) :
 	config(config), modname(modname), max_native_fds(0) {
-	config->lookupValue("max_native_fds", this->max_native_fds);
-
+	this->config->lookupValue("max_native_fds", this->max_native_fds);
+	{
+		std::string tmp;
+		this->config->lookupValue("loglevel", tmp);
+		this->max_loglvl = str_to_loglevel(tmp);
+	}
+#ifdef SAVE_FILE_HANDLES
 	config->register_changeable("max_native_fds", [this]() {
 			this->config->lookupValue("max_native_fds", this->max_native_fds);
 			// TODO maybe close enough files to reach the limit
+		});
+#endif
+
+	config->register_changeable("loglevel", [this]() {
+			std::string tmp;
+			this->config->lookupValue("loglevel", tmp);
+			this->max_loglvl = str_to_loglevel(tmp);
 		});
 }
 
@@ -27,9 +58,9 @@ int Module::translatepath(const std::string &path, std::string &out) {
 	std::string basepath;
 	int retval = find_raid(basepath);
 	out = basepath + path;
-	//std::cout << "Translated from " << path << " to " << out << std::endl;
 	return retval;
 }
+
 
 int Module::find_raid(std::string &path) {
 	if (basepath != "") {
@@ -60,8 +91,12 @@ int Module::find_raid(std::string &path) {
 	return 0;
 }
 
+static bool do_log(Module::LOG_LEVEL lvl, Module::LOG_LEVEL ref) {
+	return lvl <= ref;
+}
+
 void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path) {
-	if (lvl < max_loglvl) {
+	if (!do_log(lvl, max_loglvl) {
 		return;
 	}
 
@@ -88,13 +123,11 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 	if (path != "") {
 		ss << ": " << path;
 	}
-	std::cout << prefix << ss.str() << "\033[0m" << std::endl;
+	std::cerr << prefix << ss.str() << "\033[0m" << std::endl;
 
-	// Maybe Log WRN and ERR to syslog
+	// WRN and ERR to syslog
 	switch(lvl) {
 	default:
-	case LOG_LEVEL::TRACE:
-	case LOG_LEVEL::INFO:
 		break;
 	case LOG_LEVEL::WRN:
 		syslog(LOG_WARNING, ss.str().c_str());
@@ -105,33 +138,82 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 	}
 }
 
+
 void Module::trace(const std::string &method,
                    const std::string &path,
                    const std::string &second_path) {
-	log(LOG_LEVEL::TRACE, method + " ", path + " " + second_path);
+#ifdef ENABLE_TRACELOG
+	std::stringstream ss;
+	ss << method << ": " << path;
+	if (second_path != "") {
+		ss << " --> " << second_path;
+	}
+	log(LOG_LEVEL::TRACE, ss.str());
+#else
+	(void)method;
+	(void)path;
+	(void)second_path;
+#endif
 }
 
+
+void Module::info(const std::string &method,
+                  const std::string &message,
+                  const std::string &path,
+                  const std::string &second_path) {
+
+	std::stringstream ss;
+	ss << "WARN: " << method << ": " << message << " at " << path;
+	if (second_path != "") {
+		ss << " --> " << second_path;
+	}
+	log(LOG_LEVEL::WRN, ss.str());
+}
+
+
+void Module::warn(const std::string &method,
+                  const std::string &message,
+                  const std::string &path,
+                  const std::string &second_path) {
+
+	std::stringstream ss;
+	ss << "WARN: " << method << ": " << message << " at " << path;
+	if (second_path != "") {
+		ss << " --> " << second_path;
+	}
+	log(LOG_LEVEL::WRN, ss.str());
+}
+
+
+void Module::error(const std::string &method,
+                   const std::string &path,
+                   const std::string &second_path) {
+	std::stringstream ss;
+	ss << "ERROR: " << method << ": " << errno << " " << strerror(errno) << " at " << path;
+	if (second_path != "") {
+		ss << " --> " << second_path;
+	}
+	log(LOG_LEVEL::ERR, ss.str());
+}
 
 // A default file handle does nothing
 Module::open_file_handle_t::open_file_handle_t(open_file_t *f, bool close) :
 	file(f),
 	should_close(close) {
-	std::cout << "\tHandle " << this->file->path << std::endl;
 }
 
 Module::open_file_handle_t::open_file_handle_t(open_file_handle_t &&rhs) :
 	file(rhs.file),
 	should_close(rhs.should_close) {
 	rhs.file = nullptr;
-	std::cout << "Moving context" << std::endl;
 }
 
 // Closes the file upon leaving the control structure, releasing its contents
 // and especially its precious file descriptors.
 Module::open_file_handle_t::~open_file_handle_t() {
+#ifdef SAVE_FILE_HANDLES
 	if (this->file != nullptr) {
 		if (this->should_close && this->file->is_open) {
-			std::cout << "\tClosing " << this->file->path << std::endl;
 			switch(this->file->type) {
 			case open_file_t::FILE:
 				close(this->file->fh.fd);
@@ -145,6 +227,7 @@ Module::open_file_handle_t::~open_file_handle_t() {
 			this->file->is_open = false;
 		}
 	}
+#endif
 }
 
 int Module::open_file_handle_t::fd() {
@@ -153,21 +236,17 @@ int Module::open_file_handle_t::fd() {
 		return -1;
 	}
 
+#ifdef SAVE_FILE_HANDLES
 	if (!this->file->is_open) {
-		std::cout << "\tOpening file " << this->file->path << std::endl;
 		// Remember R/W status, and set the remaining stuff correctly
 		int flags = (this->file->flags & (O_RDONLY | O_WRONLY | O_RDWR)) | O_NOFOLLOW | O_APPEND;
 		this->file->fh.fd = ::open(this->file->path.c_str(), flags);
-		std::cout << "\tFD: " << this->file->fh.fd << std::endl
-		          << "mode: " << ((flags & O_RDONLY)?"R":"")
-		          << ((flags & O_WRONLY)?"W":"")
-		          << ((flags & O_RDWR)?"B":"");
 		if (this->file->fh.fd < 0) {
 			std::cout << "ERROR opening file " << strerror(errno) << std::endl;
 		}
 		this->file->is_open = true;
 	}
-
+#endif
 	return this->file->fh.fd;
 }
 
@@ -176,13 +255,12 @@ DIR *Module::open_file_handle_t::dp() {
 		errno = EINVAL;
 		return NULL;
 	}
-
+#ifdef SAVE_FILE_HANDLES
 	if (!this->file->is_open) {
-		std::cout << "\tOpening dir " << this->file->path << std::endl;
 		this->file->fh.dp = ::opendir(this->file->path.c_str());
-		this->file->is_open = true;
+		this->file->i/s_open = true;
 	}
-
+#endif
 	return this->file->fh.dp;
 }
 
@@ -199,7 +277,6 @@ Module::open_file_handle_t Module::file(const std::string &path) {
 		file = &it->second;
 	} else {
 		open_file_t f;
-		std::cout << "Creating new open file " << path << std::endl;
 		f.path = path; // TODO is this really neccessary?
 		f.is_open = false;
 		f.has_changed = false;
@@ -238,8 +315,8 @@ void Module::dump_open_files(std::ostream &s) {
 }
 
 int Module::getattr(const char *path, struct stat *statbuf) {
-	// Since getattr is spaming a _lot_, it should be more quiet to make actual
-	// fs interactions more readable.
+	// Since getattr is spaming a _lot_, it should be more quiet to make the
+	// remaining output more readable.
 	//this->trace("getattr", path);
 	memset(statbuf, 0, sizeof(*statbuf));
 	if (strcmp(path, "/") == 0) {
@@ -262,14 +339,13 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated)) != 0) {
-		this->log(LOG_LEVEL::WRN, "getattr - translatepath failed", path);
+		this->info("getattr", "translatepath failed", path);
 	} else {
 		retstat = ::lstat(translated.c_str(), statbuf);
 		if (retstat) {
 			retstat = -errno;
 			if (errno != ENOENT) {
-				perror("ERROR: getattr lstat");
-				this->log(LOG_LEVEL::WRN, "ERROR: getattr lstat ", translated);
+				this->warn("getattr", "lstat failed", translated);
 			}
 		}
 	}
@@ -301,7 +377,7 @@ int Module::readlink(const char *path, char */*link*/, size_t /*size*/) {
 	retstat = ::readlink(translated.c_str(), link, size - 1);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
+		this->warn("readlink", "readlink failed", path);
 	} else {
 		link[retstat] = '\0';
 		retstat       = 0;
@@ -329,12 +405,13 @@ int Module::mkdir(const char *path, mode_t mode) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("mkdir", "translatepath failed", path);
 		return retstat;
 	}
 
 	if ((retstat = ::mkdir(translated.c_str(), mode)) < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_mkdir mkdir");
+		this->warn("mkdir", "mkdir failed", translated);
 	}
 
 	return retstat;
@@ -347,16 +424,16 @@ int Module::unlink(const char *path) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("unlink", "translatepath failed", path);
 		return retstat;
 	}
 
 	if ((retstat = ::unlink(translated.c_str()))) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
+		this->warn("unlink", "unlink", translated);
 	}
 
 	this->close_file(translated);
-
 	return retstat;
 }
 
@@ -367,23 +444,22 @@ int Module::rmdir(const char *path) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("rmdir", "translatepath failed", path);
 		return retstat;
 	}
 
 	if ((retstat = ::rmdir(translated.c_str()))) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_unlink unlink");
+		this->warn("rmdir", "rmdir", translated);
 	}
 
 	this->close_file(translated);
-
 	return retstat;
 }
 
 
 int Module::symlink(const char *path, const char *) {
 	this->trace("symlink", path);
-
 	return -ENOTSUP;
 }
 
@@ -394,23 +470,16 @@ int Module::rename(const char *sourcepath,
                    const char */*newpath_raw*/) {
 	this->trace("rename", sourcepath, newpath);
 
-	std::cout << "RENAME:"
-	          << "\n\tsource " << sourcepath
-	          << "\n\traw:   " << sourcepath_raw
-	          << "\n\tdest:  " << newpath << std::endl;
-	dump_open_files(std::cout << "open files: ");
-	std::cout << std::endl;
-
 	int retstat = 0;
 	std::string to_translated;
 	if ((retstat = this->translatepath(newpath, to_translated))) {
-		std::cout << "\n\nTO\n\n";
+		this->info("rename", "translatepath failed", newpath);
 		return retstat;
 	}
 
 	if ((retstat = ::rename(sourcepath, to_translated.c_str()) < 0)) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_rename rename");
+		this->warn("rename", "rename", sourcepath, to_translated);
 	} else {
 		// move a possible open file within the file hierarchy.
 		auto it = open_files.find(sourcepath_raw);
@@ -432,12 +501,13 @@ int Module::chmod(const char *path, mode_t mode) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("chmod", "translatepath failed", path);
 		return retstat;
 	}
 
 	if ((retstat = ::chmod(translated.c_str(), mode)) < 0) {;
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_chmod chmod");
+		this->warn("chmod", "chmod", translated);
 	}
 
 	return retstat;
@@ -446,7 +516,6 @@ int Module::chmod(const char *path, mode_t mode) {
 
 int Module::chown(const char *path, uid_t, gid_t) {
 	this->trace("chown", path);
-
 	return -EPERM;
 }
 
@@ -457,6 +526,7 @@ int Module::truncate(const char *path, off_t newsize) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("truncate", "translatepath failed", path);
 		return retstat;
 	}
 
@@ -464,6 +534,7 @@ int Module::truncate(const char *path, off_t newsize) {
 		struct stat st;
 		memset(&st, 0, sizeof(st));
 		if (::stat(translated.c_str(), &st) != 0) {
+			this->warn("truncate", "stat", translated);
 			return -errno;
 		}
 
@@ -475,7 +546,7 @@ int Module::truncate(const char *path, off_t newsize) {
 	retstat = ::truncate(translated.c_str(), newsize);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_truncate truncate");
+		this->warn("truncate", "truncate", translated);
 	} else {
 		this->file(translated).file->has_changed = true;
 	}
@@ -489,6 +560,7 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("open", "translatepath failed", path);
 		return retstat;
 	}
 
@@ -497,7 +569,7 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 	int fd = ::open(translated.c_str(), fi->flags);
 	if (fd < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_open open");
+		this->warn("open", "open", translated);
 	} else {
 		auto f = this->file(translated);
 		f.file->type = open_file_t::FILE;
@@ -518,14 +590,15 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("read", "translatepath failed", path);
 		return retstat;
 	}
 	auto f = this->file(translated);
 
 	retstat = ::pread(f.fd(), buf, size, offset);
 	if (retstat < 0) {
+		this->warn("read", "pread", translated);
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_read read");
 	}
 
 	return retstat;
@@ -536,12 +609,13 @@ int Module::write(const char *path, const char *buf, size_t size, off_t offset,
                   struct fuse_file_info */*fi*/) {
 	this->trace("write", path);
 
-	dump_open_files(std::cout << "open files: ");
-	std::cout << std::endl;
+	//dump_open_files(std::cout << "open files: ");
+	//std::cout << std::endl;
 
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("write", "translatepath failed", path);
 		return retstat;
 	}
 	auto f = this->file(translated);
@@ -549,9 +623,7 @@ int Module::write(const char *path, const char *buf, size_t size, off_t offset,
 	retstat = ::pwrite(fd, buf, size, offset);
 	if (retstat < 0) {
 		retstat = -errno;
-		std::stringstream ss;
-		ss << "ERROR write (fd: " << fd << "): " << strerror(errno) << std::endl;
-		this->log(LOG_LEVEL::WRN, ss.str());
+		this->warn("write", "pwrite", translated);
 	} else {
 		f.file->has_changed = true;
 	}
@@ -566,6 +638,7 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("statfs", "translatepath failed", path);
 		return retstat;
 	}
 
@@ -574,7 +647,7 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 	retstat = ::statvfs(translated.c_str(), statv);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_statfs statvfs");
+		this->warn("statfs", "statvfs", translated);
 	}
 
 	return retstat;
@@ -593,6 +666,7 @@ int Module::release(const char *path, struct fuse_file_info */*fi*/) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("stat", "translatepath failed", path);
 		return retstat;
 	}
 
@@ -613,18 +687,21 @@ int Module::fsync(const char *path, int, struct fuse_file_info */*fi*/) {
 	this->trace("fsync", path);
 
 	int retstat = 0;
-//	std::string translated;
-//	if ((retstat = this->translatepath(path, translated))) {
-//		return retstat;
-//	}
-//	auto f = this->file(translated);
-//	retstat = ::fsync(f.fd());
-//
-//	if (retstat < 0) {
-//		errno = -retstat;
-//		this->log(LOG_LEVEL::WRN, "mammut_fsync fsync");
-//	}
+	// This is only useful if we were not closing the file all the time
+#ifndef SAVE_FILE_HANDLES
+	std::string translated;
+	if ((retstat = this->translatepath(path, translated))) {
+		this->info("fsync", "translatepath failed", path);
+		return retstat;
+	}
 
+	auto f = this->file(translated);
+	retstat = ::fsync(f.fd());
+	if (retstat < 0) {
+		errno = -retstat;
+		this->warn("fsync", "fsync", translated);
+	}
+#endif
 	return retstat;
 }
 
@@ -659,13 +736,14 @@ int Module::opendir(const char *path, struct fuse_file_info */*fi*/) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("opendir", "translatepath failed", path);
 		return retstat;
 	}
 
 	DIR *dp = ::opendir(translated.c_str());
 	if (dp == NULL) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_opendir opendir");
+		this->warn("opendir", "opendir", translated);
 		return retstat;
 	} else {
 		auto f = this->file(translated);
@@ -687,6 +765,7 @@ int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("readdir", "translatepath failed", path);
 		return retstat;
 	}
 	auto f = this->file(translated);
@@ -700,8 +779,9 @@ int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	struct dirent *de;
 	while ((de = ::readdir(dp)) != NULL) {
-		if (filler(buf, de->d_name, NULL, 0) != 0)
+		if (filler(buf, de->d_name, NULL, 0) != 0) {
 			return -ENOMEM;
+		}
 	}
 
 	return 0;
@@ -714,12 +794,12 @@ int Module::releasedir(const char *path, struct fuse_file_info */*fi*/) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("releasedir", "translatepath failed", path);
 		return retstat;
 	}
 	auto f = this->file(translated);
 	if (f.file->is_open && f.file->type == open_file_t::DIRECTORY) {
 		retstat = ::closedir(f.dp());
-
 		f.file->is_open = false;
 	}
 	open_files.erase(path);
@@ -740,6 +820,7 @@ int Module::access(const char *path, int mask) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("access", "translatepath failed", path);
 		return retstat;
 	}
 	retstat = ::access(translated.c_str(), mask);
@@ -753,17 +834,17 @@ int Module::create(const char *path, mode_t mode, struct fuse_file_info */*fi*/)
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
-		this->log(LOG_LEVEL::WRN, "FAILED: translate: create" + std::string(path));
+		this->info("create", "translatepath failed", path);
 		return retstat;
 	}
 
 	int fd = ::creat(translated.c_str(), mode);
 	if (fd < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_create creat");
+		this->warn("create", "creat", translated);
 	} else {
 		// We do not like open files!
-		::close(fd);
+//		::close(fd);
 		auto f = this->file(translated);
 		f.file->type = open_file_t::FILE;
 		f.file->flags = O_APPEND | O_RDWR;
@@ -781,13 +862,14 @@ int Module::utimens(const char *path, const struct timespec tv[2]) {
 	int retstat = 0;
 	std::string translated;
 	if ((retstat = this->translatepath(path, translated))) {
+		this->info("utimens", "translatepath failed", path);
 		return retstat;
 	}
 
 	retstat = ::utimensat(0, translated.c_str(), tv, 0);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->log(LOG_LEVEL::WRN, "mammut_utime utime");
+		this->warn("utimens", "utimesat", translated);
 	}
 
 	return retstat;

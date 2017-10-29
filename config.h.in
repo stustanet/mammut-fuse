@@ -1,0 +1,2 @@
+#cmakedefine SAVE_FILE_HANDLES
+#cmakedefine ENABLE_TRACELOG

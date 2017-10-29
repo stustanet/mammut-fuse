@@ -148,7 +148,7 @@ void Communicator::thread_send() {
 				remove_client(i);
 			}
 		} else {
-			std::cout << "No clients connected. Not sending data" << std::endl;
+			std::cout << "No clients connected: " << data << std::endl;
 		}
 	}
 }

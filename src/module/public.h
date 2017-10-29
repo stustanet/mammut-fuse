@@ -35,7 +35,7 @@ public:
 	                   const char *newpath,
 	                   const char *sourcepath_raw,
 	                   const char *newpath_raw) {
-		std::cout << "from " << sourcepath_raw << " to " << newpath_raw << std::endl;
+		//std::cout << "from " << sourcepath_raw << " to " << newpath_raw << std::endl;
 		int ret = Module::rename(sourcepath, newpath, sourcepath_raw, newpath_raw);
 		this->comm->inotify("RENAME", sourcepath_raw, newpath_raw);
 		return ret;
@@ -77,8 +77,10 @@ protected:
 		// "real" indexable path
 //		std::string translated;
 //		this->translatepath(path, translated);
-		this->log(LOG_LEVEL::INFO, name, path);
-		this->comm->inotify(name, path);
+		std::stringstream ss;
+		ss << config->username() << "/" << path;
+		this->log(LOG_LEVEL::INFO, name, ss.str());
+		this->comm->inotify(name, ss.str());
 	}
 private:
 	std::shared_ptr<Communicator> comm;

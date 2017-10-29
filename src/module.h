@@ -26,10 +26,23 @@ public:
 		ERR
 	};
 
-	void set_max_loglevel(LOG_LEVEL lvl);
-
 	void log(LOG_LEVEL lvl, const std::string &msg, const std::string &path = "" );
+
 	void trace(const std::string &method,
+	           const std::string &path,
+	           const std::string &second_path = "");
+
+	void info(const std::string &method,
+	          const std::string &message,
+	          const std::string &path,
+	          const std::string &second_path = "");
+
+	void warn(const std::string &method,
+	          const std::string &message,
+	          const std::string &path,
+	          const std::string &second_path = "");
+
+	void error(const std::string &method,
 	           const std::string &path,
 	           const std::string &second_path = "");
 

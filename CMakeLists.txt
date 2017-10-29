@@ -2,6 +2,16 @@ cmake_minimum_required(VERSION 3.0)
 
 project (mammutfs)
 
+set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+message (${CMAKE_MODULE_PATH})
+
+set(SAVE_FILE_HANDLES NO CACHE BOOL "Try to limit the amount of file handles used, might conflict with NFS")
+set(ENABLE_TRACELOG YES CACHE BOOL "Enable verbose trace logging of every syscall")
+
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)
+
+
 set (SOURCES
 	src/communicator.cpp
 	src/main.cpp
@@ -23,13 +33,8 @@ set (HEADERS
 
 include(src/module/CMakeLists.txt)
 
-
-set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-
-message (${CMAKE_MODULE_PATH})
-
-FIND_PACKAGE(Config++ REQUIRED)
-FIND_PACKAGE(fuse REQUIRED)
+find_package(Config++ REQUIRED)
+find_package(fuse REQUIRED)
 
 add_definitions(" -ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 -Wall -Wextra
 -pedantic")
