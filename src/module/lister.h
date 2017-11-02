@@ -28,9 +28,13 @@ public:
 		rescan();
 	}
 
+	const std::map<std::string, std::string> *get_mapping() const {
+		return &this->list;
+	}
+
 	int translatepath(const std::string &path, std::string &out) override {
 		if (path == "/") {
-			out = "core";
+			out = "";
 			return 0;
 		}
 		if (path == "/core") {
@@ -65,7 +69,8 @@ public:
 		if (strcmp(path, "/core") == 0) {
 			statbuf->st_dev         = 0;               // IGNORED Device
 			statbuf->st_ino         = 998;             // IGNORED inode number
-			statbuf->st_mode        = S_IFDIR | 0755;  // Protection
+			//statbuf->st_mode        = S_IFDIR | 0755;  // Protection
+			statbuf->st_mode        = S_IFREG | 0555;  // Protection
 			statbuf->st_nlink       = 0;               // Number of Hard links
 			statbuf->st_uid         = config->anon_uid;
 			statbuf->st_gid         = config->anon_gid;
@@ -134,7 +139,7 @@ public:
 
 	virtual int open(const char *path, struct fuse_file_info *fi) override {
 		if (strcmp("/core", path) == 0) {
-			return 1;
+			return 0;
 		} else {
 			return Module::open(path, fi);
 		}
@@ -153,31 +158,33 @@ public:
 private:
 	bool rescan() {
 		// Read the mapping file
-		std::cout << "reading file: " << config->anon_mapping_file() << std::endl;
-		std::ifstream file(config->anon_mapping_file(), std::ios::in);
+		std::string anon_mapping_file = config->anon_mapping_file();
+		this->info("scan", "using anon map", anon_mapping_file);
+		std::ifstream file(anon_mapping_file, std::ios::in);
 		if (!file) {
-			std::cout << "Error opening anon mapping file" << std::endl;
+			this->warn("scan", "error opening annon mapping` file ", anon_mapping_file);
 			return false;
 		}
 		std::string line;
 		while(std::getline(file, line, '\n')) {
 			size_t split = line.find(':');
 			if (split == std::string::npos) {
-				std::cout << "Skipping invalid line: " << line;
+				this->info("scan", "Skipping invalid line: ", line);
 				continue;
 			}
 			auto p = std::make_pair(
 				line.substr(0, split),
 				line.substr(split+1));
 			list.insert(p);
-		//	std::cout << "ANON: " << p.first << " ----> " << p.second << std::endl;
 		}
-		std::cout << "found " << list.size() << " elements." << std::endl;
+		std::stringstream ss;
+		ss << "found " << list.size() << " elements.";
+		this->info("scan", ss.str(), "");
 		return true;
 	}
 
-	std::map<std::string, std::string> list;
 
+	std::map<std::string, std::string> list;
 	std::shared_ptr<Communicator> comm;
 };
 

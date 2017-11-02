@@ -5,13 +5,16 @@
 #include "../mammut_config.h"
 #include "../communicator.h"
 
+#include <algorithm>
+
 namespace mammutfs {
 
 class Anonymous : public Module {
 public:
-	Anonymous (std::shared_ptr<MammutConfig> config, std::shared_ptr<Communicator> comm) :
+	Anonymous (std::shared_ptr<MammutConfig> config, std::shared_ptr<Communicator> comm, const std::map<std::string, std::string> *anon_map) :
 		Module("anonym", config),
-		comm(comm) {}
+		comm(comm),
+		anon_map(anon_map) {}
 
 	virtual int mkdir(const char *path, mode_t mode) {
 		int i = Module::mkdir(path, mode);
@@ -72,15 +75,48 @@ public:
 
 protected:
 	void inotify(const std::string &name, const std::string &path) {
-		// TODO Check if we need to prepend the current user id to create a
-		// "real" indexable path
-//		std::string translated;
-//		this->translatepath(path, translated);
-		this->log(LOG_LEVEL::INFO, name, path);
-		this->comm->inotify(name, path);
+		// Reverse translate the anon path by clever reverse searching within the anon mapping
+		// The input path is the relative path within this module, i.e. if the path was
+		// `mnt/anonym/test/x/y/z` the $path variable is `/test/x/y/z`.
+		// What we do is strip it down to the first path (`test`), create a partial anon mapping
+		// `a_test_` and search that with a partial-matching in the anon mapping.
+
+		size_t split = path.find('/', 1);
+		std::string subpath;
+		std::string toplevel;
+		if (split == std::string::npos) { // no / found => the full path is our root!
+			toplevel = path;
+		} else {
+			// Offset of 1 because it starts with /
+			toplevel = path.substr(1, split-1);
+			subpath = path.substr(split+1);
+		}
+		std::string anon_path = std::string("a_") + toplevel + "_";
+		auto it = std::find_if(this->anon_map->begin(), this->anon_map->end(),
+		                       [&anon_path](const std::pair<std::string, std::string> &p) {
+				// The Anon mapping _XXX suffix is exactly 3 chars long
+				if (p.first.length() == anon_path.length() + 3) {
+					// Compare the prefixes
+					if (p.first.compare(0, anon_path.length(), anon_path)) {
+						return true;
+					}
+				}
+				return false;
+			});
+		if (it == this->anon_map->end()) {
+			this->warn("inotify", "could not reverse translate path", path);
+			return;
+		}
+		// `it` now points to the pair anon:path
+
+		std::stringstream ss;
+		ss << it->first << "/" << subpath;
+		this->log(LOG_LEVEL::INFO, name, ss.str());
+		this->comm->inotify(name, ss.str());
 	}
 private:
 	std::shared_ptr<Communicator> comm;
+	const std::map<std::string, std::string> *anon_map;
 };
 
 }

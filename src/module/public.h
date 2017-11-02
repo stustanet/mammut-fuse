@@ -73,10 +73,6 @@ public:
 
 protected:
 	void inotify(const std::string &name, const std::string &path) {
-		// TODO Check if we need to prepend the current user id to create a
-		// "real" indexable path
-//		std::string translated;
-//		this->translatepath(path, translated);
 		std::stringstream ss;
 		ss << config->username() << "/" << path;
 		this->log(LOG_LEVEL::INFO, name, ss.str());

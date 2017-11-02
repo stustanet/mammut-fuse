@@ -91,12 +91,8 @@ int Module::find_raid(std::string &path) {
 	return 0;
 }
 
-static bool do_log(Module::LOG_LEVEL lvl, Module::LOG_LEVEL ref) {
-	return lvl <= ref;
-}
-
 void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path) {
-	if (!do_log(lvl, max_loglvl) {
+	if (static_cast<int>(lvl) < static_cast<int>(max_loglvl)) {
 		return;
 	}
 

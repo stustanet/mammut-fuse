@@ -55,13 +55,15 @@ void setup_main() {
 	communicator->start();
 
 
+	// We need the anon lister first, because it will generate the anon mapping
+	auto anon_lister = std::make_shared<mammutfs::PublicAnonLister>(config, communicator);
 	/// Add all Modules to the following list
 	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config));
+	resolver->registerModule("lister", anon_lister);
 	resolver->registerModule("private", std::make_shared<mammutfs::Private>(config));
 	resolver->registerModule("public", std::make_shared<mammutfs::Public>(config, communicator));
-	resolver->registerModule("anonym", std::make_shared<mammutfs::Anonymous>(config, communicator));
+	resolver->registerModule("anonym", std::make_shared<mammutfs::Anonymous>(config, communicator, anon_lister->get_mapping()));
 	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config));
-	resolver->registerModule("lister", std::make_shared<mammutfs::PublicAnonLister>(config, communicator));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
