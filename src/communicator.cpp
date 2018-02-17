@@ -169,11 +169,12 @@ void Communicator::thread_recv() {
 		perror("main - epoll_ctl");
 	}
 
-	struct epoll_event pevents[20];
+	static const int num_events = 20;
+	struct epoll_event pevents[num_events];
 
 	while (running) {
-		int ready = epoll_wait(pollingfd, pevents, 20, -1);
-		if (ready == -1) {
+		int ready = epoll_wait(pollingfd, pevents, num_events, -1);
+		if (ready == -1 && errno != EINTR) {
 			perror("epoll_wait");
 		}
 
@@ -241,7 +242,6 @@ void Communicator::inotify(const std::string &operation,
 	send(sstrbuf.str());
 }
 
-
 void Communicator::register_command(const std::string &unfiltered_command,
                                     const Communicator::command_callback &cb,
                                     const std::string &helptext) {
@@ -257,7 +257,6 @@ void Communicator::register_command(const std::string &unfiltered_command,
 
 	this->commands.insert(std::make_pair(str, cmd));
 }
-
 
 void Communicator::execute_command(std::string cmd) {
 	if (cmd.size() == 0) return;

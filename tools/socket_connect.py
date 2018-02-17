@@ -32,16 +32,16 @@ class MammutfsProtocol(asyncio.Protocol):
         loop = asyncio.get_event_loop()
         loop.stop()
 
-def stdin_received(socket):
+def stdin_received(loop, socket):
     data = sys.stdin.readline()
-    socket.send(data)
+    asyncio.gather(socket.send(data))
     print("> ", end='', flush=True)
 
 class MammutSocket:
 
     def __init__(self, loop, server_address):
         self.loop = loop
-        self.mammutsocket = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        self.mammutsocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         print ('connecting to %s' % server_address)
         try:
             self.mammutsocket.connect(server_address)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     elif len(sys.argv) == 2:
         try:
             print("> ", end='', flush=True)
-            loop.add_reader(sys.stdin.fileno(), lambda: stdin_received(socket))
+            loop.add_reader(sys.stdin.fileno(), lambda: stdin_received(loop, socket))
             loop.run_forever()
             loop.close()
         finally:

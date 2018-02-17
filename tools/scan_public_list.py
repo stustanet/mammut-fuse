@@ -31,6 +31,12 @@ def list_anon_dir(path, old_entries):
                 print("Selecting old value for " + out_path + ": " + old_entries[out_path]);
                 public_entries.append((old_entries[out_path], out_path))
             else:
+                new_entry = ""
+                for e in entry:
+                    if not e in ALLOWED_CHARS:
+                        new_entry += "_"
+                    else:
+                        new_entry += e
                 # Repeat until a unique identifier was found;
                 while True:
                     # Generate a new random string for identification
@@ -38,18 +44,11 @@ def list_anon_dir(path, old_entries):
                                                    + string.ascii_lowercase
                                                    + string.digits)
                                      for _ in range(3));
-                    new_entry = ""
-                    for e in entry:
-                        if not e in ALLOWED_CHARS:
-                            new_entry += "_"
-                        else:
-                            new_entry += e
-
-                    new_entry = "a_" + new_entry + "_" + suffix
-                    new_path = anonpath + "/" + entry
-                    if not new_entry in public_entries:
-                        public_entries.append((new_entry, new_path))
+                    test = "a_" + new_entry + "_" + suffix
+                    if not test in public_entries:
                         break
+                new_path = anonpath + "/" + entry
+                public_entries.append((test, new_path))
     return public_entries
 
 def main(configfile, outfile, oldfile):

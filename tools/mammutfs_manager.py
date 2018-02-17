@@ -63,7 +63,7 @@ class Mammutfs:
         Open up one single socket
         """
         print ('connecting to %s' % socketname)
-        self.mammutsocket = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        self.mammutsocket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self.mammutsocket.connect(socketname)
         except socket.error as msg:

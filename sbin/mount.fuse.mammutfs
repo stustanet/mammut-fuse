@@ -21,7 +21,7 @@ home = sys.argv[2]
 
 os.makedirs("/run/mammutfs_sockets", exist_ok=True)
 os.chown(home, pwnam.pw_uid, pwnam.pw_gid)
-os.chmod(home, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH)
+os.chmod(home, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
 # Drop into the users priviliges
 # Set the group priviliges
@@ -33,6 +33,9 @@ os.setuid(pwnam.pw_uid)
 
 # Start mammutfs with arguments
 args = [mammutfs, config_user,
+#        "--deamonize", "0", # If the subprozess forks it will destroy the management
+                            # threads. so we have to make him not forking, regardless
+                            # whats in the config - we have already forked.
         "--mountpoint", home,
         "--username", pwnam.pw_name]
 

@@ -35,9 +35,17 @@ public:
 	                   const char *newpath,
 	                   const char *sourcepath_raw,
 	                   const char *newpath_raw) {
-		//std::cout << "from " << sourcepath_raw << " to " << newpath_raw << std::endl;
+		std::cout << "from " << sourcepath_raw << " to " << newpath_raw << std::endl;
 		int ret = Module::rename(sourcepath, newpath, sourcepath_raw, newpath_raw);
 		this->comm->inotify("RENAME", sourcepath_raw, newpath_raw);
+		return ret;
+	}
+
+	virtual int write(const char *path, const char *data, size_t size, off_t off) {
+		int ret = Module::write(path, data, size, off);
+		if (ret == 0 && size > 0) {
+			inotify("WRITE", path);
+		}
 		return ret;
 	}
 
@@ -48,20 +56,8 @@ public:
 	}
 
 	virtual int release(const char *path, struct fuse_file_info *fi) {
-		bool changed = false;
-		{
-			// The path is invalid after a release - so better not safe any
-			// reference to it.
-			std::string translated;
-			this->translatepath(path, translated);
-			auto f = file(translated);
-			changed = f.changed();
-		}
 		int ret = Module::release(path, fi);
 		inotify("RELEASE", path);
-		if (changed) {
-			inotify("CHANGED", path);
-		}
 		return ret;
 	}
 
@@ -73,10 +69,9 @@ public:
 
 protected:
 	void inotify(const std::string &name, const std::string &path) {
-		std::stringstream ss;
-		ss << config->username() << "/" << path;
-		this->log(LOG_LEVEL::INFO, name, ss.str());
-		this->comm->inotify(name, ss.str());
+		std::string translated;
+		//this->translatepath(path, translated);
+		this->comm->inotify(name, path);
 	}
 private:
 	std::shared_ptr<Communicator> comm;
