@@ -28,6 +28,9 @@ public:
 		rescan();
 	}
 
+	/**
+	 * Get mapping from anon name to real path name
+	 */
 	const std::map<std::string, std::string> *get_mapping() const {
 		return &this->list;
 	}

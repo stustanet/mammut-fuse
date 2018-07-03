@@ -79,14 +79,14 @@ public:
 
 	template <typename _T>
 	bool lookupValue(const char *key, _T &value, bool ignore_error = false) const {
-		std::cout << "Looking for " << key;
+		std::cout << "Looking for \"" << key << "\"";
 		{
 			auto it = manvalues.find(key);
 			if (it != manvalues.end()) {
 				buf.clear();
 				buf.str(it->second);
 				buf >> value;
-				std::cout << " [cmd] " << value << std::endl;
+				std::cout << " [man] " << value << std::endl;
 				return true;
 			}
 		}
