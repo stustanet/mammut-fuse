@@ -47,7 +47,7 @@ class MammutSocket:
             self.mammutsocket.connect(server_address)
         except socket.error as msg:
             print (msg)
-            sys.exit(1)
+            raise
 
         loop.set_debug(True)
         self.connect = loop.create_unix_connection(MammutfsProtocol,
@@ -61,12 +61,12 @@ class MammutSocket:
     def close(self):
         self.mammutsocket.close()
 
-if __name__ == "__main__":
+def main():
     loop = asyncio.get_event_loop()
-    socket = MammutSocket(loop, sys.argv[1])
+    mammutsocket = MammutSocket(loop, sys.argv[1])
     if len(sys.argv) == 4 and sys.argv[2] == "-c":
         try:
-            loop.run_until_complete(socket.send(sys.argv[3]))
+            loop.run_until_complete(mammutsocket.send(sys.argv[3]))
             loop.close()
         finally:
             print("Closing socket")
@@ -79,11 +79,14 @@ if __name__ == "__main__":
             loop.close()
         finally:
             print("Closing socket")
-            if (socket):
-                socket.close()
+            if (mammutsocket):
+                mammutsocket.close()
     else:
         print("Usage: ");
         print(sys.argv[0], " unixsocket [-c command]")
         print()
         print("whereby unixsocket is the socket to connect to, and command is the command to execute.")
         print("if command is empty an interactive shell will be spawned")
+
+if __name__ == "__main__":
+    main()
