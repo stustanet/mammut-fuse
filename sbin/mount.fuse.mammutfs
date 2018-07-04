@@ -4,8 +4,11 @@ import os
 import sys
 import pwd
 import stat
+import signal
 
 # sys.argv[1] is the UNAME, not the UID
+
+signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
 if os.fork() != 0:
     exit(0)
@@ -41,4 +44,3 @@ args = [mammutfs, config_user,
 
 print("Starting " + str(args))
 os.execv(mammutfs, args)
-
