@@ -45,8 +45,7 @@ class MammutSocket:
         print ('connecting to %s' % server_address)
         try:
             self.mammutsocket.connect(server_address)
-        except socket.error as msg:
-            print (msg)
+        except socket.error:
             raise
 
         loop.set_debug(True)
@@ -74,7 +73,7 @@ def main():
     elif len(sys.argv) == 2:
         try:
             print("> ", end='', flush=True)
-            loop.add_reader(sys.stdin.fileno(), lambda: stdin_received(loop, socket))
+            loop.add_reader(sys.stdin.fileno(), lambda: stdin_received(loop, mammutsocket))
             loop.run_forever()
             loop.close()
         finally:
