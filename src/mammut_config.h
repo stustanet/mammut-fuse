@@ -1,5 +1,7 @@
 #pragma once
 
+#include "config.h"
+
 #include <libconfig.h++>
 
 #include <sys/types.h>
@@ -77,16 +79,27 @@ public:
 		return t;
 	}
 
+	#ifndef ENABLE_CONFIG_DEBUG
+	mutable std::stringstream voidstream;
+	#endif
+	std::iostream &log() const {
+		#ifdef ENABLE_CONFIG_DEBUG
+		return std::cout;
+		#else
+		return this->voidstream;
+		#endif
+	}
+
 	template <typename _T>
 	bool lookupValue(const char *key, _T &value, bool ignore_error = false) const {
-		std::cout << "Looking for \"" << key << "\"";
+		this->log() << "Looking for \"" << key << "\"";
 		{
 			auto it = manvalues.find(key);
 			if (it != manvalues.end()) {
 				buf.clear();
 				buf.str(it->second);
 				buf >> value;
-				std::cout << " [man] " << value << std::endl;
+				this->log() << " [man] " << value << std::endl;
 				return true;
 			}
 		}
@@ -96,7 +109,7 @@ public:
 				buf.clear();
 				buf.str(it->second);
 				buf >> value;
-				std::cout << " [cmd] " << value << std::endl;
+				this->log() << " [cmd] " << value << std::endl;
 				return true;
 			}
 		}
@@ -107,9 +120,9 @@ public:
 				buf.clear();
 				buf.str(tmp);
 				buf >> value;
-				std::cout << " [file] " << value << std::endl;
+				this->log() << " [file] " << value << std::endl;
 			} else {
-				std::cout << " \033[044mCOULD NOT FIND CONFIG VALUE!\033[00m" << std::endl;
+				std::cout << " \033[044mCOULD NOT FIND CONFIG VALUE:\033[00m" << key << std::endl;
 				if (!ignore_error) {
 					exit(-1);
 				}

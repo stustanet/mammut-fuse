@@ -262,13 +262,13 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 
 	fuseargs.push_back("--");
 	std::string mountpoint = config->mountpoint();
-	std::cout << mountpoint.c_str();
 	fuseargs.push_back(mountpoint.c_str());
 
-	std::cout << "Starting fuse with the following arguments: " << std::endl;
+	std::cout << "fuse args: ";
 	for (auto arg : fuseargs) {
-		std::cout << "\t" << arg << std::endl;
+		std::cout << " " << arg;
 	}
+	std::cout << std::endl;
 
 	struct fuse_operations mammut_ops;
 	memset(&mammut_ops, 0, sizeof(mammut_ops));
@@ -310,21 +310,21 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	mammut_ops.utimens    = mammut_utimens;
 
 	// the magic happens here
-	int fuse_stat = fuse_main(fuseargs.size(),
-	                          const_cast<char**>(fuseargs.data()),
-	                          &mammut_ops,
-	                          &userdata);
-	
+	int fuse_stat = fuse_main(
+		fuseargs.size(),
+		const_cast<char**>(fuseargs.data()),
+		&mammut_ops,
+		&userdata);
+
 	if (fuse_stat) {
 		std::stringstream ss;
-		ss << "Fuse Failed: " << strerror(errno);
+		ss << "fuse failed: " << strerror(errno);
 		if (errno == EPERM) {
 			ss << " user " << config->username() << " needs write access to " << config->mountpoint();
 		}
 		syslog(LOG_ERR, ss.str().c_str());
 		std::cerr << ss.str();
 	}
-	fprintf(stdout, "%d Thanks for using mammutfs, with best regards - StuStaNet.\n", fuse_stat);
 }
 
 }

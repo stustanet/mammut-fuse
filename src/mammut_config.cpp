@@ -27,8 +27,6 @@ MammutConfig::MammutConfig(const char *filename,
 		exit(-1);
 	}
 
-	std::cout << "Overwrite configs on command line with --<listed option name> value" << std::endl;
-
 	enum STATE {
 		EXPECT_KEY,
 		EXPECT_VALUE
@@ -51,18 +49,17 @@ MammutConfig::MammutConfig(const char *filename,
 		}
 	}
 
-	std::cout << "CMD Line: " << std::endl;
-	for (const auto &e : this->cmdline) {
-		std::cout << "\t" << e.first << "=" << e.second << std::endl;
+	if (!cmdline.empty()) {
+		std::cout << "CMD Line: " << std::endl;
+		for (const auto &e : this->cmdline) {
+			std::cout << "\t" << e.first << "=" << e.second << std::endl;
+		}
+		std::cout << std::endl;
 	}
-	std::cout << std::endl;
 
 	auto &settings_raid = config->lookup("raids");
 	for (auto it = settings_raid.begin(); it != settings_raid.end(); ++it) {
 		raids.push_back(it->c_str());
-	}
-	for (const auto &e : raids) {
-		std::cout << "Using RAID: " << e << std::endl;
 	}
 
 	// access all values once, so the startup will fail if a value is missing
@@ -82,25 +79,19 @@ MammutConfig::MammutConfig(const char *filename,
 }
 
 void MammutConfig::filterModules(std::shared_ptr<ModuleResolver> mods) {
-	std::string active_modules;
-
-	if (!this->lookupValue("modules", active_modules)) {
-		printf("Invalid config: \"modules\" not found");
-		exit(EXIT_FAILURE);
+	const auto& modulelist = this->config->lookup("modules");
+	std::stringstream ss;
+	ss << "Activating modules: ";
+	for (auto it = modulelist.begin(); it != modulelist.end(); ++it) {
+		std::string module = *it;
+		if (mods->activateModule(module)) {
+			ss << module << ", ";
+		} else {
+			std::cerr << "ERROR: Module not found: " << module << std::endl;
+			exit(-1);
+		}
 	}
-
-	char *data = strdup(active_modules.c_str());
-	char *token = NULL;
-	char *context = NULL;
-
-	token = strtok_r(data, " ,:;", &context);
-	while(token != NULL) {
-		mods->activateModule(token);
-		std::cout << "Activating module: " << token << std::endl;
-
-		token = strtok_r(NULL, " ,:;", &context);
-	}
-	free(data);
+	std::cout << ss.str() << std::endl;
 }
 
 void MammutConfig::update_anonuser() {
@@ -112,10 +103,6 @@ void MammutConfig::update_anonuser() {
 	}
 	anon_uid = passwd_info->pw_uid;
 	anon_gid = passwd_info->pw_gid;
-
-	std::cout << "Anonymous User: " << anon_username()
-	          << " UID " << anon_uid
-	          << " GID " << anon_gid << std::endl;
 }
 
 void MammutConfig::update_user() {

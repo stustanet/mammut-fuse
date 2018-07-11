@@ -10,6 +10,9 @@ set(SAVE_FILE_HANDLES NO CACHE BOOL
 set(ENABLE_TRACELOG YES CACHE BOOL
 	"Enable verbose trace logging of every syscall")
 
+set(CONFIG_DEBUG NO CACHE BOOL
+	"Enable verbose debugging of config values")
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/config.h)
 

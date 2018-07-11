@@ -1,2 +1,3 @@
 #cmakedefine SAVE_FILE_HANDLES
 #cmakedefine ENABLE_TRACELOG
+#cmakedefine ENABLE_CONFIG_DEBUG
