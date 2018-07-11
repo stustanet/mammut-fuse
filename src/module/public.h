@@ -15,19 +15,22 @@ public:
 
 	virtual int mkdir(const char *path, mode_t mode) override {
 		int ret = Module::mkdir(path, mode);
-		inotify("MKDIR", path);
+		if (ret == 0)
+			inotify("MKDIR", path);
 		return ret;
 	}
 
 	virtual int unlink(const char *path) override {
 		int ret = Module::unlink(path);
-		inotify("UNLINK", path);
+		if (ret == 0)
+			inotify("UNLINK", path);
 		return ret;
 	}
 
 	virtual int rmdir(const char *path) override {
 		int ret = Module::rmdir(path);
-		inotify("RMDIR", path);
+		if (ret == 0)
+			inotify("RMDIR", path);
 		return ret;
 	}
 
@@ -37,7 +40,8 @@ public:
 	                   const char *newpath_raw) override {
 		std::cout << "from " << sourcepath_raw << " to " << newpath_raw << std::endl;
 		int ret = Module::rename(sourcepath, newpath, sourcepath_raw, newpath_raw);
-		this->comm->inotify("RENAME", sourcepath_raw, newpath_raw);
+		if (ret == 0)
+			this->comm->inotify("RENAME", sourcepath_raw, newpath_raw);
 		return ret;
 	}
 
@@ -55,14 +59,31 @@ public:
 
 	virtual int truncate(const char *path, off_t off) override {
 		int ret = Module::truncate(path, off);
-		inotify("TRUNCATE", path);
+		if (ret == 0)
+			inotify("TRUNCATE", path);
 		return ret;
 	}
 
 	virtual int release(const char *path,
 	                    struct fuse_file_info *fi) override {
+
+		int retstat = 0;
+		std::string translated;
+		if ((retstat = this->translatepath(path, translated))) {
+			this->info("stat", "translatepath failed", path);
+			return retstat;
+		}
+		bool changed = false;
+		if (this->file(translated).changed()) {
+			changed = true;
+		}
+
 		int ret = Module::release(path, fi);
-		inotify("RELEASE", path);
+		if (ret == 0) {
+			if (changed)
+				inotify("CHANGED", path);
+			inotify("RELEASE", path);
+		}
 		return ret;
 	}
 
@@ -76,8 +97,6 @@ public:
 
 protected:
 	void inotify(const std::string &name, const std::string &path) {
-		std::string translated;
-		//this->translatepath(path, translated);
 		this->comm->inotify(name, "public", path);
 	}
 };
