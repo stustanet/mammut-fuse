@@ -78,7 +78,7 @@ protected:
 	void inotify(const std::string &name, const std::string &path) {
 		std::string translated;
 		//this->translatepath(path, translated);
-		this->comm->inotify(name, path);
+		this->comm->inotify(name, "public", path);
 	}
 private:
 	std::shared_ptr<Communicator> comm;

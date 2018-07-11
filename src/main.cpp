@@ -41,19 +41,19 @@ int main(int argc, char **argv) {
 	                                                  argc,
 	                                                  argv,
 	                                                  resolver);
-	// Setting up the communicator, that manges the unix socket
-	communicator = std::make_shared<mammutfs::Communicator>(config);
 
 	// Hit the road
-	//
 	// This will fork, and afterwards call setup_main
 	mammutfs::mammut_main(resolver, config);
 }
 
 void setup_main() {
+	// We start this in the context of fuse - hopefully the sockets & threads survive
+	// Setting up the communicator, that manges the unix socket
+	communicator = std::make_shared<mammutfs::Communicator>(config);
+
 	// Start the communicator threads
 	communicator->start();
-
 
 	// We need the anon lister first, because it will generate the anon mapping
 	auto anon_lister = std::make_shared<mammutfs::PublicAnonLister>(config, communicator);

@@ -38,10 +38,14 @@ public:
 	/* Start the threads */
 	void start();
 
+
 	virtual ~Communicator();
 
 	void send(const std::string &data);
-	void inotify (const std::string &operation, const std::string &path, const std::string &path2 = "");
+	void inotify (const std::string &operation,
+	              const std::string &module,
+	              const std::string &path,
+	              const std::string &path2 = "");
 
 	using command_callback = std::function<bool(const std::string &data)>;
 	void register_command(const std::string &command,
@@ -62,18 +66,21 @@ public:
 
 
 private:
-	void thread_recv();
-	void thread_send();
+	bool connect();
+
+	void communication_thread();
+
+	void receive_command();
+	void send_queue();
 
 	void execute_command(std::string cmd);
 
-	void remove_client(int socket);
 
 	std::shared_ptr<MammutConfig> config;
+	std::string socketname;
 
-	int connect_socket;
-	int pollingfd;
-	std::vector<int> connected_sockets;
+	int socket;
+	volatile bool connected;
 
 	struct command {
 		command_callback callback;
@@ -83,8 +90,7 @@ private:
 
 	SafeQueue<std::string> queue;
 
-	std::unique_ptr<std::thread> thrd_send;
-	std::unique_ptr<std::thread> thrd_recv;
+	std::unique_ptr<std::thread> thrd_comm;
 
 	bool running;
 

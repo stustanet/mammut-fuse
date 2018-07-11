@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include <algorithm>
 #include <deque>
@@ -21,54 +22,11 @@
 namespace mammutfs {
 
 Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
-	config(config) {
-	std::string socketname;
-	config->lookupValue("socket_directory", socketname);
-	socketname += "/" + config->username();
-	std::cout << "Using socket " << socketname << std::endl;
-	if(unlink(socketname.c_str()) && errno != ENOENT) {
-		char buffer[1024] = {0};
-		strcat(buffer, "Communication socket failed: unlink: ");
-		strcat(buffer, strerror(errno));
-		syslog(LOG_ERR, buffer);
-		fprintf(stderr, buffer);
-	}
-
-	connect_socket = ::socket(AF_UNIX, SOCK_STREAM, 0);
-	if (connect_socket < 0) {
-		char buffer[1024] = {0};
-		strcat(buffer, "Communication socket failed: socket: ");
-		strcat(buffer, strerror(errno));
-		syslog(LOG_ERR, buffer);
-		fprintf(stderr, buffer);
-		exit(-1);
-	}
-
-	struct sockaddr_un socket_addr;
-	memset(&socket_addr, 0, sizeof(socket_addr));
-	socket_addr.sun_family = AF_UNIX;
-	strncpy(socket_addr.sun_path, socketname.c_str(), socketname.size());
-	int retval = bind(connect_socket,
-	                  (struct sockaddr *) &socket_addr,
-	                  sizeof(socket_addr));
-	if (retval < 0) {
-		char buffer[1024] = {0};
-		strcat(buffer, "Communication socket failed: bind: ");
-		strcat(buffer, strerror(errno));
-		syslog(LOG_ERR, buffer);
-		fprintf(stderr, buffer);
-		exit(-1);
-	}
-
-	retval = listen(connect_socket, 20);
-	if (retval < 0) {
-		char buffer[1024] = {0};
-		strcat(buffer, "Communication socket failed: listen: ");
-		strcat(buffer, strerror(errno));
-		syslog(LOG_ERR, buffer);
-		fprintf(stderr, buffer);
-		exit(-1);
-	}
+	config(config),
+	socket(-1),
+	connected(false) {
+	config->lookupValue("daemon_socket", this->socketname);
+	std::cout << "Using socket " << this->socketname << std::endl;
 
 	register_void_command("HELP", [this](const std::string &) {
 			std::stringstream ss;
@@ -111,51 +69,63 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 
 Communicator::~Communicator() {
 	running = false;
-	thrd_send->join();
-	thrd_recv->join();
-	close(connect_socket);
-	for(int i : connected_sockets) {
-		close(i);
-	}
+	thrd_comm->join();
+	close(this->socket);
 }
 
 void Communicator::start() {
 	this->running = true;
-	this->thrd_recv = std::make_unique<std::thread>(
-		std::bind(&Communicator::thread_recv, this));
-	this->thrd_send = std::make_unique<std::thread>(
-		std::bind(&Communicator::thread_send, this));
-
+	this->thrd_comm = std::make_unique<std::thread>(
+		std::bind(&Communicator::communication_thread, this));
 }
 
-void Communicator::thread_send() {
-	while (running) {
-		std::string data;
-		queue.dequeue(&data);
-		data = data + "\n";
-		if (!connected_sockets.empty()) {
-			std::cout << "Sending data: " << data << std::endl;
-			errno = 0;
-			std::deque<int> to_delete;
-			for (int sock : connected_sockets) {
-				int nsnd = ::send(sock, data.c_str(), data.size(), 0);
-				if (nsnd < 0 && errno != 0) {
-					perror("write");
-					to_delete.push_back(sock);
-				}
-			}
-			for (int i : to_delete) {
-				remove_client(i);
-			}
-		} else {
-			std::cout << "No clients connected: " << data << std::endl;
-		}
+bool Communicator::connect() {
+	if (this->socket != -1) { // The socket is still connected?
+		close(this->socket);
+		socket = -1;
 	}
+	this->connected = false;
+	this->socket = ::socket(AF_UNIX, SOCK_STREAM, 0);
+	if (this->socket < 0) {
+		char buffer[1024] = {0};
+		strcat(buffer, "socket failed: socket: ");
+		strcat(buffer, strerror(errno));
+		syslog(LOG_ERR, buffer);
+		fprintf(stderr, buffer);
+		return false;
+	}
+
+	struct sockaddr_un socket_addr;
+	memset(&socket_addr, 0, sizeof(socket_addr));
+	socket_addr.sun_family = AF_UNIX;
+	strncpy(socket_addr.sun_path, socketname.c_str(),
+	        std::min(int(socketname.size()), PATH_MAX));
+
+	int retval = ::connect(this->socket, (struct sockaddr *) &socket_addr,
+	                     sizeof(socket_addr));
+	if (retval < 0) {
+		char buffer[1024] = {0};
+		strcat(buffer, "failed to connect: ");
+		strcat(buffer, strerror(errno));
+		syslog(LOG_ERR, buffer);
+		fprintf(stderr, buffer);
+		fprintf(stderr, "\n");
+		return false;
+	}
+
+	// Send our hello!
+	sstrbuf.str("");
+	sstrbuf.clear();
+	sstrbuf << "{\"op\":\"hello\",\"user\":\"" << this->config->username() << "\","
+	        << "\"mountpoint\":\"" << this->config->mountpoint() << "\"}\n";
+	send(sstrbuf.str());
+
+	this->connected = true;
+	return true;
 }
 
-void Communicator::thread_recv() {
-	char buffer[1024];
-	pollingfd = epoll_create(1);
+void Communicator::communication_thread() {
+	int pollingfd = epoll_create(1);
 	if (pollingfd < 0) {
 		perror("epoll create");
 		exit(-1);
@@ -164,77 +134,115 @@ void Communicator::thread_recv() {
 	struct epoll_event ev;
 	memset(&ev, 0, sizeof(ev));
 	ev.events = EPOLLIN;
-	ev.data.fd = connect_socket;
-	if (epoll_ctl(pollingfd, EPOLL_CTL_ADD, connect_socket, &ev) != 0) {
+	ev.data.fd = this->queue.get_eventfd();
+	if (epoll_ctl(pollingfd, EPOLL_CTL_ADD, this->queue.get_eventfd(), &ev) != 0) {
 		perror("main - epoll_ctl");
 	}
 
-	static const int num_events = 20;
+	static const int num_events = 2;
 	struct epoll_event pevents[num_events];
 
 	while (running) {
-		int ready = epoll_wait(pollingfd, pevents, num_events, -1);
-		if (ready == -1 && errno != EINTR) {
-			perror("epoll_wait");
+		int connect_backoff = 1024;
+		while(!this->connected) {
+			if (this->connect()) {
+				break;
+			}
+			// This will be done only after the connection was established,
+			// so this should never occur, only if the server died!
+			// Wait until the connection is established again
+			// which is a exponentially rising number until max. 5 seconds
+			usleep(connect_backoff);
+			connect_backoff = std::min(1*1000*1000, connect_backoff * 2);
 		}
 
-		for (int i = 0; i < ready; ++i) {
-			if (pevents[i].data.fd == connect_socket) {
-				int socketfd = accept(connect_socket, NULL, NULL);
-				std::cout << "Found new client" << std::endl;
-				if (socketfd == -1) {
-					perror("accept");
-					continue;
-				}
-				ev.events = EPOLLIN | EPOLLET;
-				ev.data.fd = socketfd;
-				if (epoll_ctl(pollingfd, EPOLL_CTL_ADD, socketfd, &ev) != 0) {
-					perror("epoll_ctl");
-					continue;
-				}
-				connected_sockets.push_back(socketfd);
-			} else {
-				int nrcv = read(pevents[i].data.fd, buffer, sizeof(buffer));
-				if (nrcv < 0) {
-					perror("recv");
-					continue;
-				}
-				buffer[sizeof(buffer)-1] = '\0';
-				execute_command(std::string(buffer));
-				memset(buffer, 0, sizeof(buffer));
+		ev.data.fd = this->socket;
+		if (epoll_ctl(pollingfd, EPOLL_CTL_ADD, this->socket, &ev) != 0) {
+			perror("main - epoll_ctl");
+		}
+
+		while (this->connected) {
+			this->send_queue();
+
+			int ready = epoll_wait(pollingfd, pevents, num_events, -1);
+			if (ready == -1 && errno != EINTR) {
+				perror("epoll_wait");
 			}
+
+			for (int i = 0; i < ready && this->connected; ++i) {
+				if (pevents[i].data.fd == this->socket) {
+					receive_command();
+				} else if (pevents[i].data.fd == this->queue.get_eventfd()) {
+					send_queue();
+				}
+			}
+		}
+		ev.data.fd = this->socket;
+		if (epoll_ctl(pollingfd, EPOLL_CTL_DEL, this->socket, &ev) != 0) {
+			perror("main - epoll_ctl");
 		}
 	}
 }
 
-void Communicator::remove_client(int sock) {
-	for(auto it = connected_sockets.begin();
-	    it != connected_sockets.end();
-	    ++it) {
-		if (*it == sock) {
-			connected_sockets.erase(it);
-			struct epoll_event ev;
-			memset(&ev, 0, sizeof(ev));
-			ev.data.fd = sock;
-			if (epoll_ctl(pollingfd, EPOLL_CTL_DEL, sock, &ev) != 0) {
-				perror("epoll_ctl");
-			}
-			break;
-		}
+
+void Communicator::receive_command() {
+	char buffer[1024];
+	int nrcv = ::read(this->socket, buffer, sizeof(buffer));
+	if (nrcv < 0) {
+		perror("recv");
+		// if in doubt - disconnect
+		this->connected = false;
+		return;
+	} else if (nrcv == 0) {
+		// disconnected!
+		this->connected = false;
+		return;
+	}
+
+	buffer[sizeof(buffer)-1] = '\0';
+	execute_command(std::string(buffer));
+	memset(buffer, 0, sizeof(buffer));
+}
+
+
+void Communicator::send_queue() {
+	if (this->queue.empty()) {
+//		std::cout << "queue is empty. not sending" << std::endl;
+		return;
+	}
+	uint8_t buffer[8];
+	// We have the input event pending
+	if (::read(this->queue.get_eventfd(), buffer, 8) < 0) {
+		perror("eventfd");
+		return;
+	}
+
+	std::string data;
+	if (!this->queue.dequeue(&data, false)) {
+		// We could not retrieve a value - this should never occure, we
+		// check nevertheless
+		return;
+	}
+
+	int nsnd = ::send(this->socket, data.c_str(), data.size(), 0);
+	if (nsnd < 0 && errno != 0) {
+		perror("write");
 	}
 }
 
 void Communicator::send(const std::string &data) {
-	queue.enqueue(data);
+	this->queue.enqueue(data);
 }
 
 void Communicator::inotify(const std::string &operation,
+                           const std::string &module,
                            const std::string &path,
                            const std::string &path2) {
 	sstrbuf.str("");
 	sstrbuf.clear();
-	sstrbuf << "{\"op\":\"" << operation
-	        << "\",\"path\":\"" << path << "\"";
+	sstrbuf << "{\"op\":\"" << operation << "\","
+	        << "\"module\":\"" << module << "\","
+	        << "\"path\":\"" << path << "\"";
 	if (path2 != "") {
 		sstrbuf << ", \"path2\":\"" << path2 << "\"";
 	}

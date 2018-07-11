@@ -1,165 +1,180 @@
 #!/usr/bin/env python3
 
-import aionotify
-import argparse
 import asyncio
-import io
-import libconf
+import json
 import logging
 import os
 import sys
-import json
-import redis
-import pickle
 
-from libmammutfs import MammutfsSocket
+import argparse
+import libconf
 
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(name)s: %(message)s',
     stream=sys.stderr,
 )
-log = logging.getLogger('main')
 
-class Mammutfsd:
+class MammutfsDaemon:
     """
-    Mammut file system administration daemon.
+    Mammut file system administration daemon core
+
+    possible plugin options (all are couroutines):
+
+    init(mammutfsdaemon) # REQUIRED, returns the plugin object
+                         # arg: self
+    teardown() # destroy the class again
+    on_client(clientsocket) # Called when a new client is connecting
+                            # @arg: the socket connection to this client
+    on_fileop(client, jsonop) # Called when a file operation is happening
+                              # @arg json: the change json dict
+                              # @arg client: the client that sent this
+
+    plugins can also register callbacks to interactive commands here using
+
+    mammutfsd.register("Command", async callback), whereby the callback receives
+    command.split(' ') for possible command line args
     """
-    _messagebus = asyncio.StreamReader()
-    _running = {}
 
+    def __init__(self, configfile, **kwargs):
+        with open(configfile) as cfgf:
+            self.config = libconf.load(cfgf)
 
-    def __init__(self, cfgfile, argv):
-        """
-        Load the mammutfs config file
-        """
+        for k, v in kwargs.items():
+            self.config['mammutfsd'][k] = v
 
-        self.listening = True
-        self._argv = argv
-        self.watcher = aionotify.Watcher()
-        with open(cfgfile) as f:
-            self.cfg = libconf.load(f)
-        self.parsecfg(self.cfg, argv)
-        self.teardown_running = False
+        self.log = logging.getLogger('main')
+        self._janitortask = None
+        self._interactionsocket = None
+        self._commands = {}
+        self._plugins = []
+        self._clients = []
+        self.client_removal_queue = asyncio.Queue()
 
-    def getcfg(self, key):
-        """
-        Read a config value from command line or config file
-        The command line can overwrite values within the configfile
-        """
-        argopt = getattr(self._argv, key, None)
-        if argopt:
-            return argopt
-        else:
-            return self.cfg[key]
-
-    def parsecfg(self, cfgfile, argv):
-        """
-        Parse the config file and load them.
-        """
-        self.management = self.getcfg('management')
-        self.interactive = argv.interactive
-        self.socketdir = self.getcfg('socket_directory')
-        self.redis_server = self.getcfg('redis_server')
-        self.redis_table = self.getcfg('redis_table')
-
-
-    def setup(self, loop):
-        """
-        Create the daemons and start them
-        """
-
+    async def start(self, loop=None):
+        """ Start the different parts of the daemon """
+        if not loop:
+            loop = asyncio.get_event_loop()
         self.loop = loop
-        self.loop.run_until_complete(self._socketdirsetup())
-        self.task = self.loop.create_task(self._socketdirobserver())
 
-        if self.interactive:
-            print("Enabling Interactive mode")
-            self.stdintask = loop.create_task(self._stdinobserver())
-        if self.management:
-            print("Enable Management mode")
-            self.management_task = loop.create_task(self._managementobserver())
+        await asyncio.start_unix_server(self.client_connected, loop=loop,
+                                        path=self.config['daemon_socket'])
 
-        # connect to redis
-        print("Starting redis")
-        self.redis_handle = redis.Redis(host=self.redis_server)
+        if self.config["mammutfsd"]["interactive"]:
+            self._interactionsocket = loop.create_task(self.interactionsocket())
 
-    async def teardown(self):
-        """
-        Tear it down properly
-        """
-        if self.teardown_running:
-            return
-        self.teardown_running = True
-        self.listening = False
-        print("starting teardown")
+        self._janitortask = loop.create_task(self.monitorsocket())
+        await self._load_plugins()
 
+    def register(self, command, callback):
         try:
-            self.task.cancel()
-            await self.task
-        except asyncio.CancelledError:
-            pass
+            self._commands[command].append(callback)
+        except KeyError:
+            self._commands[command] = [callback]
 
-        if self.stdintask:
+    async def _load_plugins(self):
+        # TODO Read "mammutfsd_plugins"-list
+        configured_plugins = list(self.config["mammutfsd"]["plugins"]) + \
+                             [ 'mammutfsd_help' ]
+        for pluginname in configured_plugins:
             try:
-                self.stdintask.cancel()
-                await self.stdintask
-            except asyncio.CancelledError:
+                module = __import__(pluginname)
+                self._plugins.append(await module.init(self.loop, self))
+            except AttributeError as exp:
+                # The plugin did not have a teardown method
+                self.log.info("Attribute Error")
+                self.log.exception(exp)
+            except ImportError:
+                self.log.error("Could not load plugin: %s", pluginname)
                 pass
 
-        if self.management_task:
+    async def call_plugin(self, function, client, args):
+        for plugin in self._plugins:
             try:
-                self.management_task.cancel()
-                await self.management_task
-            except asyncio.CancelledError:
-                pass
+                func = getattr(plugin, function)
+            except AttributeError:
+                # The plugin did not have the method
+                continue
+            if asyncio.iscoroutinefunction(func):
+                await func(client, args)
+            else:
+                func(client, args)
 
-    async def _managementobserver(self):
+    async def client_connected(self, reader, writer):
         """
-        Manage all the changes that happen on mammut.
-        These include: reacting to changes and updating all connected listings.
-        Also discover changes and transmit them to redis.
+        Called whenever a new client connected
         """
-        while self.listening:
-            try:
-                msg = await self.all_msg()
-                print("Change: " + msg['op'] + " on file " + msg['path'])
+        class mammutfsdclient:
+            def __init__(self, reader, writer, mfsd):
+                self.reader = reader
+                self.writer = writer
+                self.mfsd = mfsd
+                self.read_task = None
 
-                # Self management stuff
-                if msg['op']== 'RMDIR':
-                    if self._is_anon_root(msg['path']):
-                        print("Lost anon dir - Will reload anon-map")
-                        await self.update_anon_map()
-                elif msg['op'] == 'MKDIR':
-                    if self._is_anon_root(msg['path']):
-                        print("Created anon dir - Will reload anon-map")
-                        await self.update_anon_map()
+            async def run(self):
+                self.read_task = self.mfsd.loop.create_task(self.readloop())
 
-                # Redis interaction
-                # filter the mammutfs hints needed in the redis db
-                #
-                # UNLINK  = remove
-                # RENAME  = rename/move
-                # CREATE  = new file
-                # CHANGE  = file changed
-                if msg['op'] in ["UNLINK", "RENAME", "CREATE"]:
+            async def readloop(self):
+                # TODO Say hello to the client?
+                while True:
+                    line = await self.reader.readline()
+                    if not line:
+                        break
+                    data = json.loads(line.decode('utf-8'))
+                    if 'op' in data and data['op'] == 'hello':
+                        self.details = data;
+                        del self.details['op']
+                        print("Hello", self.details['user'])
+                        break
+                    else:
+                        self.mfsd.warning("Invalid client hello received ", line)
+
+                while True:
+                    line = await self.reader.readline()
+                    if len(line) == 0:
+                        # We should die - this could be tricky
+                        # 1. This loop must die   < done here by returning
+                        # 2. This task mus be removed from the running clients
+                        # 2. This task must die   < done here by returning
+                        # 3. This task mus be read
+                        self.mfsd.client_removal_queue.put_nowait(self)
+                        print("bye bye client")
+                        return
                     try:
-                        bytestr = pickle.dumps((msg['path'], msg['op']))
-                        self.redis_handle.lpush(self.redis_table, bytestr)
-                    except Exception as e:
-                        print("Failed to push change to redis!", e)
-            except KeyError:
-                # msg did not contain an op field
-                pass
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logging.exception(e)
+                        data = json.loads(line.decode('utf-8'))
+                        await self.mfsd.call_plugin('on_fileop', self, data)
+                    except json.JSONDecodeError:
+                        pass
+
+            async def write(self, command):
+                self.writer.write(command.encode('utf-8'))
+                await self.writer.drain()
+
+            async def close(self):
+                try:
+                    self.read_task.cancel()
+                    await self.read_task
+                except asyncio.CancelledError:
+                    pass
+
+        client = mammutfsdclient(reader, writer, self)
+        self._clients.append(client)
+        await self.call_plugin('on_client', client, {})
+        await client.run()
+
+    async def monitorsocket(self):
+        while True:
+            # An client will insert itself into here if it wants to die
+            # some kind of suicide booth
+            to_remove = await self.client_removal_queue.get()
+            print("Removing socket")
+            self._clients = [ client for client in self._clients if client != to_remove ]
+            await to_remove.close()
 
 
-    async def _stdinobserver(self):
+    async def interactionsocket(self):
         """
-        interactive shell provider - not really usable for multiple masters
+        Manage keyboard interaction in interactive mode
         """
 
         reader = asyncio.StreamReader()
@@ -167,168 +182,72 @@ class Mammutfsd:
         await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
 
         while True:
-            data = await reader.readline()
-            print("sending", data)
-            await self._sendmessage(data)
-
-    async def _sendmessage(self, data):
-        """
-        Send a message to all terminals and wait for response
-        """
-        try:
-            result = await self.all_command(data)
-            print(result)
-        except Exception as e:
-            logging.exception(e)
-        print ("> ", end='', flush=True)
-
-    async def _socketdirsetup(self):
-        """
-        Be notified, whenever something within the socket directory changes
-        (uses inotify watch)
-        """
-        self.watcher.watch(alias='sockets', path=self.socketdir,
-                flags=aionotify.Flags.CREATE | aionotify.Flags.DELETE |
-                aionotify.Flags.MODIFY)
-        
-        print("setup watch on " + self.socketdir)
-        try:
-            await self.watcher.setup(self.loop)
-        except OSError as e:
-            logging.exception(e)
-            raise
-
-        ## Add all files in the socketdir as mammutfs
-        for filename in os.listdir(self.socketdir):
+            line = await reader.readline()
+            line = line.decode('utf-8').strip()
+            if not line:
+                continue
+            lineargs = line.split(' ')
             try:
-                await self.add_socket(filename)
-            except OSError as e:
-                logging.exception(e)
-                return
+                asyncio.gather(*[callback(lineargs)
+                                 for callback in self._commands[lineargs[0]]])
+            except KeyError:
+                self.log.error("command not found: %s", lineargs[0])
+                # and hope it was the lineargs problem
 
-    async def _socketdirobserver(self):
-        while self.listening:
-            print("Observing socket directory")
-            event = await self.watcher.get_event()
-            flags = aionotify.Flags.parse(event.flags)
-            if  aionotify.Flags.CREATE in flags:
-                await self.add_socket(event.name)
-            elif aionotify.Flags.DELETE in flags:
-                await self.remove_socket(event.name)
+    async def sendall(self, command):
+        await asyncio.gather(*[client.write(command) for client in self._clients ])
 
-    def _is_anon_root(self, path):
+    async def teardown(self):
         """
-        Detect if a path is an anonymous folder, and it was added as a new
-        folder in root. Should match to a regex
+        The last one to leave pays the bill
         """
-        return True
+        if self._interactionsocket:
+            try:
+                self._interactionsocket.cancel()
+                await self._interactionsocket
+            except asyncio.CancelledError:
+                pass
 
-        rex = r'anonymous/[^/]*/[^/]*$'
-        return rex.match(path)
+        for plugin in self._plugins:
+            try:
+                getattr(plugin, 'teardown')
+            except AttributeError:
+                continue
 
-    async def add_socket(self, name):
-        """
-        When a new socket appears, it will be added into the pool of known 
-        sockets
-        """
+            try:
+                await plugin.teardown()
+            except asyncio.CancelledError:
+                pass
+
+        for client in self._clients:
+            try:
+                await client.close()
+            except asyncio.CancelledError:
+                pass
+
         try:
-            name = self.socketdir + "/" + name
-            #print("adding socket: " + name)
-            mfs = MammutfsSocket(self.loop, self._messagebus)
-            await mfs.connect(name);
-            self._running[name] = mfs
-        except (ConnectionRefusedError, FileNotFoundError) as e:
-            print("Connection to socket \"" + name + "\" has failed:")
-            print(e)
-        except Exception as e:
-            print(e)
-            raise
-    
-
-    async def remove_socket(self, name):
-        """
-        remove the socket from the pool of known sockets
-        """
-        if name in self._running.keys():
-            print("removing socket: " + name)
-            del self._running[name]
-        else:
-            print("Socket was not registered: " + name)
-
-    async def all_command(self, command):
-        """
-        Send a command to all sockets in the pool of known socket
-        """
-        r = []
-        pending = [mfs.send_command(command) for mfs in self._running.values()]
-        try:
-            results,_ = await asyncio.wait(pending)
-            for task in filter((lambda e: not e is None), results):
-                try:
-                    msg = await task
-
-                    msg = msg.decode('ascii')
-                    try:
-                        r.append(json.loads(msg))
-                    except json.decoder.JSONDecodeError:
-                        r.append({'state':'error'})
-                except Exception as e:
-                    logging.exception(e)
-        except Exception as e:
-            logging.exception(e)
-
-        return r
-
-    async def all_msg(self):
-        """
-        Receive any message from any client
-        """
-        print("waiting")
-        msg = await self._messagebus.readline()
-        msg = msg.decode('ascii').strip()
-        if not msg:
-            return {}
-
-        print("data da", msg)
-        try:
-            return json.loads(msg)
-        except json.JSONDecodeError as e:
-            logging.exception(e)
-            return {}
-    
-    async def update_anon_map(self):
-        # TODO: Update the map...
-        await self.all_command("FORCE-RELOAD")
-
+            self._janitortask.cancel()
+            await self._janitortask
+        except asyncio.CancelledError:
+            pass
 
 def main():
     """
-    Start the magic
+    Actually start the mammutfs daemon
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--socket_directory',
-            help="Directory, where mammutfs stores its sockets")
-    parser.add_argument('--interactive', 
-            type=bool, default=False, 
-            help="Open an interactive shell to communicate with all mammutfs instances at once DEFAULT: False")
-    parser.add_argument('--management', 
-            type=bool, default=True, 
-            help="Disable management features of mammutfs (for example reloading of anon.map) DEFAULT: True")
-
+    parser.add_argument('--config', help="Configfile to load")
     args = parser.parse_args()
-    mmd = Mammutfsd("./mammutfsd.conf", args)
 
     loop = asyncio.get_event_loop()
-    loop.set_debug(True)
-    mmd.setup(loop)
+    mammutfs = MammutfsDaemon(args.config, **vars(args))
+    loop.run_until_complete(mammutfs.start())
     try:
         loop.run_forever()
+    except KeyboardInterrupt:
+        pass
     finally:
-        try:
-            loop.run_until_complete(mmd.teardown())
-        except Exception as e:
-            raise
-
+        loop.run_until_complete(mammutfs.teardown())
 
 if __name__ == "__main__":
     main()

@@ -88,14 +88,10 @@ public:
 
 protected:
 	void inotify(const std::string &operation, const std::string &path) {
-		stringbuilder.clear();
-		stringbuilder << this->config->mountpoint() << path;
-		std::cout << "Notifying path " << stringbuilder.str() << std::endl;
-		this->comm->inotify(operation, stringbuilder.str());
+		this->comm->inotify(operation, "anonym", path);
 	}
 
 private:
-	std::stringstream stringbuilder;
 	std::shared_ptr<Communicator> comm;
 	const std::map<std::string, std::string> *anon_map;
 };
