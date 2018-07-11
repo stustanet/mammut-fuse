@@ -15,6 +15,128 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+class mammutfsdclient:
+    def __init__(self, reader, writer, mfsd):
+        self.reader = reader
+        self.writer = writer
+        self.mfsd = mfsd
+        self.read_task = None
+        self.plugin_call_task = None
+
+        self._plugin_fileop_queue = asyncio.Queue(loop=self.mfsd.loop)
+
+        self.details = {}
+
+        self._request_pending = False
+        self._request_queue = asyncio.Queue(loop=self.mfsd.loop)
+
+
+    async def run(self):
+        self.read_task = self.mfsd.loop.create_task(self.readloop())
+        self.plugin_call_task = self.mfsd.loop.create_task(self.plugin_call_loop())
+
+    async def readloop(self):
+        # Say hello to the client
+        while True:
+            line = await self.reader.readline()
+            if not line:
+                break
+            data = json.loads(line.decode('utf-8'))
+            if 'op' in data and data['op'] == 'hello':
+                self.details = data;
+                del self.details['op']
+                self.mfsd.log.info("client connect. announced user: %s",
+                                   self.details['user'])
+                break
+            else:
+                self.mfsd.log.warning("Invalid client hello received ", line)
+
+        while True:
+            line = await self.reader.readline()
+            if not line:
+                # We should die - this could be tricky
+                # 1. This loop must die   < done here by returning
+                # 2. This task mus be removed from the running clients
+                # 2. This task must die   < done here by returning
+                # 3. This task mus be read
+                await self.kill()
+                return
+            try:
+                data = json.loads(line.decode('utf-8'))
+                if self._request_pending:
+                    await self._request_queue.put(data)
+                else:
+                    if 'state' in data:
+                        # This is a state message!
+                        self.mfsd.log.info("Last command returned: " + str(data))
+                    elif 'op' in data and 'module' in data:
+                        # Dispatch plugin calls to another coroutine
+                        await self._plugin_fileop_queue.put(data)
+                    else:
+                        self.mfsd.log.warn("Unknown data received: " + str(data))
+            except json.JSONDecodeError:
+                self.mfsd.log.warn("Invalid data received: " + str(line))
+
+
+    async def plugin_call_loop(self):
+        while True:
+            data = await self._plugin_fileop_queue.get()
+            await self.mfsd.call_plugin('on_fileop', self, data)
+
+
+    async def request(self, command):
+        self._request_pending = True
+        await self.write(command)
+        response = await self._request_queue.get()
+        self._request_pending = False
+        return response
+
+    async def write(self, command):
+        try:
+            self.writer.write(command.encode('utf-8'))
+            await self.writer.drain()
+        except ConnectionResetError:
+            await self.kill()
+
+    async def kill(self):
+        self.mfsd.client_removal_queue.put_nowait(self)
+        self.mfsd.log.info("client disconnect")
+
+    async def close(self):
+        try:
+            self.read_task.cancel()
+            await self.read_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            self.plugin_call_task.cancel()
+            await self.plugin_call_task
+        except asyncio.CancelledError:
+            pass
+
+    async def anonym_raid(self):
+        if 'anonym_raid' in self.details:
+            return self.details['anonym_raid']
+        else:
+            response = await self.request("anonym_raid")
+            if response['state'] == 'success':
+                raid = response['response']
+                self.details['anonym_raid'] = raid
+                return raid
+        return ""
+
+    async def user(self, module):
+        if 'user' in self.details:
+            return self.details['user']
+        else:
+            # Request config from the connected mammutfs
+            response = self.request("user")
+            if response['state'] == 'success':
+                user = response['response']
+                self.details['user'] = user
+                return user
+        return ""
+
 class MammutfsDaemon:
     """
     Mammut file system administration daemon core
@@ -104,58 +226,6 @@ class MammutfsDaemon:
         """
         Called whenever a new client connected
         """
-        class mammutfsdclient:
-            def __init__(self, reader, writer, mfsd):
-                self.reader = reader
-                self.writer = writer
-                self.mfsd = mfsd
-                self.read_task = None
-
-            async def run(self):
-                self.read_task = self.mfsd.loop.create_task(self.readloop())
-
-            async def readloop(self):
-                # TODO Say hello to the client?
-                while True:
-                    line = await self.reader.readline()
-                    if not line:
-                        break
-                    data = json.loads(line.decode('utf-8'))
-                    if 'op' in data and data['op'] == 'hello':
-                        self.details = data;
-                        del self.details['op']
-                        print("Hello", self.details['user'])
-                        break
-                    else:
-                        self.mfsd.warning("Invalid client hello received ", line)
-
-                while True:
-                    line = await self.reader.readline()
-                    if len(line) == 0:
-                        # We should die - this could be tricky
-                        # 1. This loop must die   < done here by returning
-                        # 2. This task mus be removed from the running clients
-                        # 2. This task must die   < done here by returning
-                        # 3. This task mus be read
-                        self.mfsd.client_removal_queue.put_nowait(self)
-                        print("bye bye client")
-                        return
-                    try:
-                        data = json.loads(line.decode('utf-8'))
-                        await self.mfsd.call_plugin('on_fileop', self, data)
-                    except json.JSONDecodeError:
-                        pass
-
-            async def write(self, command):
-                self.writer.write(command.encode('utf-8'))
-                await self.writer.drain()
-
-            async def close(self):
-                try:
-                    self.read_task.cancel()
-                    await self.read_task
-                except asyncio.CancelledError:
-                    pass
 
         client = mammutfsdclient(reader, writer, self)
         self._clients.append(client)
@@ -167,7 +237,6 @@ class MammutfsDaemon:
             # An client will insert itself into here if it wants to die
             # some kind of suicide booth
             to_remove = await self.client_removal_queue.get()
-            print("Removing socket")
             self._clients = [ client for client in self._clients if client != to_remove ]
             await to_remove.close()
 
