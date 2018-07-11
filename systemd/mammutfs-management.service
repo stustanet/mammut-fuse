@@ -6,7 +6,7 @@ After=raidmounts.target
 Type=simple
 User=nobody
 Group=nobody
-WorkingDirectory=/usr/local/sbin/mammut-fuse
+WorkingDirectory=/usr/local/sbin/mammut-fuse/mammutfsd
 ExecStart=/usr/local/sbin/mammut-fuse/mammutfsd/mammutfsd.py --config /etc/mammutfs/mammutfs.conf
 Restart=always
 
