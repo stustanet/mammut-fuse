@@ -22,7 +22,6 @@ set (SOURCES
 	src/mammut_config.cpp
 	src/mammut_fuse.cpp
 	src/module.cpp
-	src/options.cpp
 )
 
 set (HEADERS
@@ -30,7 +29,6 @@ set (HEADERS
 	src/mammut_config.h
 	src/mammut_fuse.h
 	src/module.h
-	src/options.h
 	src/resolver.h
 	src/thread_queue.h
 )
