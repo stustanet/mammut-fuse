@@ -69,10 +69,13 @@ public:
 	/**
 	 * activate a registered module.
 	 */
-	void activateModule(const char *key) {
+	bool activateModule(const std::string &key) {
 		auto it = registered.find(key);
 		if (it != registered.end()) {
 			activated.insert(std::make_pair(it->first, it->second.get()));
+			return true;
+		} else {
+			return false;
 		}
 	}
 

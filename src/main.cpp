@@ -23,24 +23,22 @@ int main(int argc, char **argv) {
 	openlog("mammutfs", LOG_PID, 0);
 
 	const char *configfile = "mammutfs.cfg";
-
-	if (argc < 2) {
-		std::cout << "You did not specify a config file (as first argument), \n"
-		          << "using default one at " << configfile << std::endl;
-	} else {
+	if (argc >= 2) {
 		configfile = argv[1];
-		std::cout << "Configfile specified. Using " << configfile << std::endl;
 		argv = &argv[1]; // skip over the first argument
 		argc--;
 	}
+	std::cout << "using config: " << configfile << std::endl;
 
 	// Setting up the resolver, that manages active modules
 	resolver = std::make_shared<mammutfs::ModuleResolver>();
-	// Setting up the config that manges program wide configuration
-	config = std::make_shared<mammutfs::MammutConfig>(configfile,
-	                                                  argc,
-	                                                  argv,
-	                                                  resolver);
+
+// Setting up the config that manges program wide configuration
+	config = std::make_shared<mammutfs::MammutConfig>(
+		configfile,
+		argc,
+		argv,
+		resolver);
 
 	// Hit the road
 	// This will fork, and afterwards call setup_main
@@ -58,12 +56,12 @@ void setup_main() {
 	// We need the anon lister first, because it will generate the anon mapping
 	auto anon_lister = std::make_shared<mammutfs::PublicAnonLister>(config, communicator);
 	/// Add all Modules to the following list
-	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config));
+	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config, communicator));
 	resolver->registerModule("lister", anon_lister);
-	resolver->registerModule("private", std::make_shared<mammutfs::Private>(config));
+	resolver->registerModule("private", std::make_shared<mammutfs::Private>(config, communicator));
 	resolver->registerModule("public", std::make_shared<mammutfs::Public>(config, communicator));
 	resolver->registerModule("anonym", std::make_shared<mammutfs::Anonymous>(config, communicator, anon_lister->get_mapping()));
-	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config));
+	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config, communicator));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
@@ -73,5 +71,5 @@ void setup_main() {
 	ss << "New Mammutfs for user " << config->username() << " at " << config->mountpoint();
 	syslog(LOG_INFO, ss.str().c_str());
 
-	std::cerr << ss.str().c_str();
+	std::cerr << ss.str() << std::endl;
 }
