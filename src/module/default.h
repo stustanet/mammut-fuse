@@ -6,8 +6,9 @@ namespace mammutfs {
 
 class Default : public Module {
 public:
-	Default(std::shared_ptr<MammutConfig> config) :
-		Module("default", config) {}
+	Default(const std::shared_ptr<MammutConfig> &config,
+	        const std::shared_ptr<Communicator> &comm) :
+		Module("default", config, comm) {}
 
 	int translatepath(const std::string &path, std::string &out) override {
 		size_t slash = path.find("/", 1);
@@ -69,20 +70,20 @@ public:
 
 	int statfs(const char *path, struct statvfs *statv) {
 		this->trace("default::statfs", path);
-         /*  struct statfs {
-               __fsword_t f_type;    // Type of filesystem (see below)
-               __fsword_t f_bsize;   // Optimal transfer block size
-               fsblkcnt_t f_blocks;  // Total data blocks in filesystem
-               fsblkcnt_t f_bfree;   // Free blocks in filesystem
-               fsblkcnt_t f_bavail;  // Free blocks available to unprivileged user
-               fsfilcnt_t f_files;   // Total file nodes in filesystem
-               fsfilcnt_t f_ffree;   // Free file nodes in filesystem
-               fsid_t     f_fsid;    // Filesystem ID
-               __fsword_t f_namelen; // Maximum length of filenames
-               __fsword_t f_frsize;  // Fragment size (since Linux 2.6)
-               __fsword_t f_flags;   // Mount flags of filesystem (since Linux 2.6.36)
-               __fsword_t f_spare[xxx]; // Padding bytes reserved for future use
-           };
+		/*  struct statfs {
+		    __fsword_t f_type;    // Type of filesystem (see below)
+		    __fsword_t f_bsize;   // Optimal transfer block size
+		    fsblkcnt_t f_blocks;  // Total data blocks in filesystem
+		    fsblkcnt_t f_bfree;   // Free blocks in filesystem
+		    fsblkcnt_t f_bavail;  // Free blocks available to unprivileged user
+		    fsfilcnt_t f_files;   // Total file nodes in filesystem
+		    fsfilcnt_t f_ffree;   // Free file nodes in filesystem
+		    fsid_t     f_fsid;    // Filesystem ID
+		    __fsword_t f_namelen; // Maximum length of filenames
+		    __fsword_t f_frsize;  // Fragment size (since Linux 2.6)
+		    __fsword_t f_flags;   // Mount flags of filesystem (since Linux 2.6.36)
+		    __fsword_t f_spare[xxx]; // Padding bytes reserved for future use
+		    };
 		*/
 		int retstat = 0;
 		std::string translated;

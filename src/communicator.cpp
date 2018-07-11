@@ -26,34 +26,40 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	socket(-1),
 	connected(false) {
 	config->lookupValue("daemon_socket", this->socketname);
-	std::cout << "Using socket " << this->socketname << std::endl;
 
-	register_void_command("HELP", [this](const std::string &) {
+	register_void_command("HELP", [this](const std::string &, std::string &resp) {
 			std::stringstream ss;
-			ss << "{'commands':[";
+			ss << "{\"commands\":[";
+
+			int cnt = this->commands.size();
 			for (const auto &v : this->commands) {
-				ss << "\"" << v.first << "\",";
+				ss << "\"" << v.first << "\"";
+				if (cnt -- > 1)
+					ss << ",";
 			}
 			ss << "]}";
-			this->send(ss.str());
+			resp = ss.str();
 		});
 
-	register_void_command("USER", [this](const std::string &) {
-			this->send(this->config->username());
+		register_void_command("USER", [this](const std::string &, std::string &resp) {
+				std::stringstream ss;
+				ss << "\"" << this->config->username() << "\"";
+				resp = ss.str();
 		});
 
-	register_void_command("CONFIG", [this](const std::string &confkey) {
+	register_void_command("CONFIG", [this](const std::string &confkey,
+	                                       std::string &resp) {
 			std::string str;
 			if (this->config->lookupValue(confkey.c_str(), str, true)) {
 				std::stringstream ss;
-				ss << "{\"state\":\"success\",\"value\":\"" << str << "\"}";
-				this->send(ss.str());
+				ss << "{\"value\":\"" << str << "\"}";
+				resp = ss.str();
 			} else {
-				this->send("{\"state\":\"error\",\"error\":\"could not find config value\"}");
+				resp = "{\"state\":\"error\",\"error\":\"could not find config value\"}";
 			}
 		}, "CONFIG:<key>");
 
-	register_command("SETCONFIG", [this](const std::string &kvpair) {
+	register_command("SETCONFIG", [this](const std::string &kvpair, std::string &resp) {
 			size_t pos = kvpair.find('=');
 			std::string key, value;
 			if (pos != std::string::npos) {
@@ -62,6 +68,7 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 				this->config->set_value(key, value);
 				return true;
 			} else {
+				resp = "\"invalid config, expecing key=value\"";
 				return false;
 			}
 		}, "SETCONFIG:<key>=<value> - will only work for certain enabled keys");
@@ -79,7 +86,7 @@ void Communicator::start() {
 		std::bind(&Communicator::communication_thread, this));
 }
 
-bool Communicator::connect() {
+bool Communicator::connect(bool initial_attempt) {
 	if (this->socket != -1) { // The socket is still connected?
 		close(this->socket);
 		socket = -1;
@@ -104,6 +111,9 @@ bool Communicator::connect() {
 	int retval = ::connect(this->socket, (struct sockaddr *) &socket_addr,
 	                     sizeof(socket_addr));
 	if (retval < 0) {
+		if (!initial_attempt && errno == ENOENT) {
+			return false;
+		}
 		char buffer[1024] = {0};
 		strcat(buffer, "failed to connect: ");
 		strcat(buffer, strerror(errno));
@@ -118,7 +128,7 @@ bool Communicator::connect() {
 	sstrbuf.clear();
 	sstrbuf << "{\"op\":\"hello\",\"user\":\"" << this->config->username() << "\","
 	        << "\"mountpoint\":\"" << this->config->mountpoint() << "\"}\n";
-	send(sstrbuf.str());
+	send_command(sstrbuf.str());
 
 	this->connected = true;
 	return true;
@@ -144,10 +154,12 @@ void Communicator::communication_thread() {
 
 	while (running) {
 		int connect_backoff = 1024;
+		bool initial_connection = true;
 		while(!this->connected) {
-			if (this->connect()) {
+			if (this->connect(initial_connection)) {
 				break;
 			}
+			initial_connection = false;
 			// This will be done only after the connection was established,
 			// so this should never occur, only if the server died!
 			// Wait until the connection is established again
@@ -162,7 +174,14 @@ void Communicator::communication_thread() {
 		}
 
 		while (this->connected) {
-			this->send_queue();
+			if (!queue.empty()) {
+				// Fake an activation
+				uint64_t buffer = 1;
+				if (::write(this->queue.get_eventfd(), &buffer, 8) < 0) {
+					perror("Event write");
+					continue;
+				}
+			}
 
 			int ready = epoll_wait(pollingfd, pevents, num_events, -1);
 			if (ready == -1 && errno != EINTR) {
@@ -173,7 +192,23 @@ void Communicator::communication_thread() {
 				if (pevents[i].data.fd == this->socket) {
 					receive_command();
 				} else if (pevents[i].data.fd == this->queue.get_eventfd()) {
-					send_queue();
+					if (this->queue.empty()) {
+						continue;
+					}
+					uint8_t buffer[8];
+					// We have the input event pending
+					if (::read(this->queue.get_eventfd(), buffer, 8) < 0) {
+						perror("eventfd");
+						continue;
+					}
+
+					std::string data;
+					if (!this->queue.dequeue(&data, false)) {
+						// We could not retrieve a value - this should never occure, we
+						// check nevertheless
+						continue;
+					}
+					send_command(data);
 				}
 			}
 		}
@@ -187,6 +222,7 @@ void Communicator::communication_thread() {
 
 void Communicator::receive_command() {
 	char buffer[1024];
+	memset(buffer, 0, sizeof(buffer));
 	int nrcv = ::read(this->socket, buffer, sizeof(buffer));
 	if (nrcv < 0) {
 		perror("recv");
@@ -201,29 +237,10 @@ void Communicator::receive_command() {
 
 	buffer[sizeof(buffer)-1] = '\0';
 	execute_command(std::string(buffer));
-	memset(buffer, 0, sizeof(buffer));
 }
 
 
-void Communicator::send_queue() {
-	if (this->queue.empty()) {
-//		std::cout << "queue is empty. not sending" << std::endl;
-		return;
-	}
-	uint8_t buffer[8];
-	// We have the input event pending
-	if (::read(this->queue.get_eventfd(), buffer, 8) < 0) {
-		perror("eventfd");
-		return;
-	}
-
-	std::string data;
-	if (!this->queue.dequeue(&data, false)) {
-		// We could not retrieve a value - this should never occure, we
-		// check nevertheless
-		return;
-	}
-
+void Communicator::send_command(const std::string &data) {
 	int nsnd = ::send(this->socket, data.c_str(), data.size(), 0);
 	if (nsnd < 0 && errno != 0) {
 		perror("write");
@@ -231,7 +248,14 @@ void Communicator::send_queue() {
 }
 
 void Communicator::send(const std::string &data) {
-	this->queue.enqueue(data);
+	if (data[data.size() - 1] != '\n') {
+		std::stringstream ss;
+		ss << data;
+		ss << "\n";
+		this->queue.enqueue(ss.str());
+	} else {
+		this->queue.enqueue(data);
+	}
 }
 
 void Communicator::inotify(const std::string &operation,
@@ -280,10 +304,21 @@ void Communicator::execute_command(std::string cmd) {
 	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 	auto it = commands.find(cmd);
 	if (it != commands.end()) {
-		if (it->second.callback(data)) {
-			send("{\"state\":\"success\"}");
+		sstrbuf.str("");
+		sstrbuf.clear();
+		std::string response;
+		if (it->second.callback(data, response)) {
+			if (response.empty()) response = "\"\"";
+			sstrbuf << "{\"state\":\"success\","
+			        << "\"response\":" << response
+			        << "}";
+			send(sstrbuf.str());
 		} else {
-			send("{\"state\":\"error\",\"error\":\"" + cmd + "\",}");
+			if (response.empty()) response = "\"\"";
+			sstrbuf << "{\"state\":\"error\","
+			        << "\"cmd\":\"" + cmd + "\","
+			        << "\"response\":" << response << "}";
+			send(sstrbuf.str());
 		}
 	} else {
 		std::cout << "Command not registered: '" << cmd << "'" << std::endl;

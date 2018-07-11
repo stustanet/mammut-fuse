@@ -8,8 +8,9 @@ namespace mammutfs {
 
 class Backup : public Module {
 public:
-	Backup (std::shared_ptr<MammutConfig> config) :
-		Module("backup", config) {}
+	Backup (const std::shared_ptr<MammutConfig> &config,
+	        const std::shared_ptr<Communicator> &comm) :
+		Module("backup", config, comm) {}
 };
 
 }

@@ -9,16 +9,25 @@ namespace mammutfs {
 
 class PublicAnonLister : public Module {
 public:
-	PublicAnonLister (std::shared_ptr<MammutConfig> config, std::shared_ptr<Communicator> comm) :
-		Module("lister", config),
-		comm(comm) {
-		comm->register_command("CLEARCACHE", [this](const std::string &) {
+	PublicAnonLister (const std::shared_ptr<MammutConfig> &config,
+	                  const std::shared_ptr<Communicator> &comm) :
+		Module("lister", config, comm){
+		comm->register_command(
+			"CLEARCACHE",
+			[this](const std::string &, std::string &/*resp*/) {
 				list.clear();
 				return true;
-			});
-		comm->register_command("FORCE-RELOAD", [this](const std::string &) {
-				return rescan();
-			});
+			}, "Clear the anonmap");
+		comm->register_command(
+			"FORCE-RELOAD",
+			[this](const std::string &, std::string &resp) {
+				int cnt = rescan();
+				if (cnt < 0) return false;
+				std::stringstream ss;
+				ss << "\"newsize\":\"" << cnt << "\"";
+				resp = ss.str();
+				return true;
+			}, "Reload the anonmap");
 
 		// When the mapping file changes, rescan the file
 		config->register_changeable("anon_mapping_file", [this]() {
@@ -159,15 +168,17 @@ public:
 	}
 
 private:
-	bool rescan() {
+	int rescan() {
 		// Read the mapping file
 		std::string anon_mapping_file = config->anon_mapping_file();
-		this->info("scan", "using anon map", anon_mapping_file);
+		std::stringstream ss;
+		ss << "using anon map: " << anon_mapping_file;
 		std::ifstream file(anon_mapping_file, std::ios::in);
 		if (!file) {
 			this->warn("scan", "error opening annon mapping` file ", anon_mapping_file);
-			return false;
+			return -1;
 		}
+		this->list.clear();
 		std::string line;
 		while(std::getline(file, line, '\n')) {
 			size_t split = line.find(':');
@@ -178,12 +189,11 @@ private:
 			auto p = std::make_pair(
 				line.substr(0, split),
 				line.substr(split+1));
-			list.insert(p);
+			this->list.insert(p);
 		}
-		std::stringstream ss;
-		ss << "found " << list.size() << " elements.";
+		ss << "; found " << this->list.size() << " elements.";
 		this->info("scan", ss.str(), "");
-		return true;
+		return this->list.size();
 	}
 
 

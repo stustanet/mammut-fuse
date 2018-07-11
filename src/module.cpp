@@ -10,6 +10,7 @@
 #include <sstream>
 
 #include "config.h"
+#include "communicator.h"
 
 namespace mammutfs {
 
@@ -30,8 +31,13 @@ static Module::LOG_LEVEL str_to_loglevel(const std::string &str) {
 }
 
 
-Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config) :
-	config(config), modname(modname), max_native_fds(0) {
+Module::Module(const std::string &modname,
+               const std::shared_ptr<MammutConfig> &config,
+               const std::shared_ptr<Communicator> &comm) :
+	config(config),
+	comm(comm),
+	modname(modname),
+	max_native_fds(0) {
 	this->config->lookupValue("max_native_fds", this->max_native_fds);
 	{
 		std::string tmp;
@@ -50,6 +56,19 @@ Module::Module(const std::string &modname, std::shared_ptr<MammutConfig> config)
 			this->config->lookupValue("loglevel", tmp);
 			this->max_loglvl = str_to_loglevel(tmp);
 		});
+
+	this->comm->register_command(
+		modname + "_raid",
+		[this](const std::string &/*data*/, std::string &resp) {
+			if (this->basepath == "") {
+				std::string path;
+				find_raid(path);
+			}
+			std::stringstream ss;
+			ss << "\"" << this->basepath << "\"";
+			resp = ss.str();
+			return true;
+		}, "Get the modules identified raid");
 }
 
 
@@ -156,7 +175,7 @@ void Module::info(const std::string &method,
                   const std::string &second_path) {
 
 	std::stringstream ss;
-	ss << "WARN: " << method << ": " << message << " at " << path;
+	ss << "INFO: " << method << ": " << message << ": " << path;
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
@@ -170,7 +189,7 @@ void Module::warn(const std::string &method,
                   const std::string &second_path) {
 
 	std::stringstream ss;
-	ss << "WARN: " << method << ": " << message << " at " << path;
+	ss << "WARN: " << method << ": " << message << ": " << path;
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
@@ -182,7 +201,7 @@ void Module::error(const std::string &method,
                    const std::string &path,
                    const std::string &second_path) {
 	std::stringstream ss;
-	ss << "ERROR: " << method << ": " << errno << " " << strerror(errno) << " at " << path;
+	ss << "ERROR: " << method << ": " << errno << " " << strerror(errno) << ": " << path;
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}

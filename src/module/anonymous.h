@@ -19,11 +19,10 @@ namespace mammutfs {
  **/
 class Anonymous : public Module {
 public:
-	Anonymous (std::shared_ptr<MammutConfig> config,
-	           std::shared_ptr<Communicator> comm,
+	Anonymous (const std::shared_ptr<MammutConfig> &config,
+	           const std::shared_ptr<Communicator> &comm,
 	           const std::map<std::string, std::string> *anon_map) :
-		Module("anonym", config),
-		comm(comm),
+		Module("anonym", config, comm),
 		anon_map(anon_map) {
 	}
 
@@ -60,7 +59,7 @@ public:
 	                  off_t off,
 	                  struct fuse_file_info *fi) override {
 		int ret = Module::write(path, data, size, off, fi);
-		if (ret == 0 && size > 0) {
+		if (ret > 0 && size > 0) {
 			inotify("WRITE", path);
 		}
 		return ret;
@@ -92,7 +91,6 @@ protected:
 	}
 
 private:
-	std::shared_ptr<Communicator> comm;
 	const std::map<std::string, std::string> *anon_map;
 };
 

@@ -8,8 +8,9 @@ namespace mammutfs {
  
 class Private : public Module {
 public:
-	Private (std::shared_ptr<MammutConfig> config) :
-		Module("private", config) {}
+	Private (const std::shared_ptr<MammutConfig> &config,
+	         const std::shared_ptr<Communicator> &comm) :
+		Module("private", config, comm) {}
 
 };
 

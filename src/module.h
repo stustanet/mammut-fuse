@@ -12,12 +12,16 @@
 
 namespace mammutfs {
 
+class Communicator;
+class MammutConfig;
 /**
  * View API for a module.
  */
 class Module {
 public:
-	Module (const std::string &modname, std::shared_ptr<MammutConfig> config);
+	Module (const std::string &modname,
+	        const std::shared_ptr<MammutConfig> &config,
+	        const std::shared_ptr<Communicator> &comm);
 
 	enum class LOG_LEVEL : int {
 		TRACE = 0,
@@ -336,6 +340,8 @@ public:
 protected:
 	/** Reference to the global config file */
 	std::shared_ptr<MammutConfig> config;
+
+	std::shared_ptr<Communicator> comm;
 
 	/** Name of the module to be set by child classes */
 	std::string modname;

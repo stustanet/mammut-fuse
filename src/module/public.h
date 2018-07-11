@@ -9,9 +9,9 @@ namespace mammutfs {
 
 class Public : public Module {
 public:
-	Public (std::shared_ptr<MammutConfig> config, std::shared_ptr<Communicator> comm) :
-		Module("public", config),
-		comm(comm) {}
+	Public (const std::shared_ptr<MammutConfig> &config,
+	        const std::shared_ptr<Communicator> &comm) :
+		Module("public", config, comm) {}
 
 	virtual int mkdir(const char *path, mode_t mode) override {
 		int ret = Module::mkdir(path, mode);
@@ -80,8 +80,6 @@ protected:
 		//this->translatepath(path, translated);
 		this->comm->inotify(name, "public", path);
 	}
-private:
-	std::shared_ptr<Communicator> comm;
 };
 
 }

@@ -47,31 +47,33 @@ public:
 	              const std::string &path,
 	              const std::string &path2 = "");
 
-	using command_callback = std::function<bool(const std::string &data)>;
+	using command_callback = std::function<bool(const std::string &data,
+	                                            std::string &)>;
 	void register_command(const std::string &command,
 	                      const command_callback &,
 	                      const std::string &helptext = ""
 	);
 
-	using void_command_callback = std::function<void(const std::string &data)>;
+	using void_command_callback = std::function<void(const std::string &data,
+	                                                 std::string &resp)>;
 	void register_void_command(const std::string &command,
 	                           const void_command_callback &cb,
 	                           const std::string &helptext = "") {
 		register_command(command,
-		                 [cb](const std::string &data) {
-			                 cb(data);
+		                 [cb](const std::string &data, std::string &resp) {
+			                 cb(data, resp);
 			                 return true;
 		                 }, helptext);
 	}
 
 
 private:
-	bool connect();
+	bool connect(bool initial_attempt);
 
 	void communication_thread();
 
 	void receive_command();
-	void send_queue();
+	void send_command(const std::string &data);
 
 	void execute_command(std::string cmd);
 
