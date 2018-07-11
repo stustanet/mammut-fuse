@@ -289,7 +289,7 @@ Module::open_file_handle_t Module::file(const std::string &path) {
 		file = &it->second;
 	} else {
 		open_file_t f;
-		f.path = path; // TODO is this really neccessary?
+		f.path = path; // TODO do we have to store the path?
 		f.is_open = false;
 		f.has_changed = false;
 		f.type = open_file_t::UNSPEC;

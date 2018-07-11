@@ -40,7 +40,7 @@ public:
 	 */
 	Module *getModuleFromPath (const char *path, const char *&remaining_path) {
 		int len = strlen(path);
-		
+
 		if (len <= 1) {
 			remaining_path = path;
 			return getModule("default");
@@ -84,6 +84,11 @@ public:
 	}
 private:
 	std::unordered_map<std::string, std::shared_ptr<Module>> registered;
+	/**
+	 * This is an _ordered_ map by design, so that the order of modules at the home page
+	 * is always the same even in programms that do not sort the output of the directory
+	 * filler
+	 */
 	std::map<std::string, Module *> activated;
 };
 

@@ -27,7 +27,7 @@ public:
 	MammutConfig(const char *filename,
 	              int argc,
 	              char **argv,
-	              std::shared_ptr<ModuleResolver> resolver);
+	              const std::shared_ptr<ModuleResolver> &resolver);
 	using changeable_callback = std::function<void(void)>;
 
 	void register_changeable(const std::string &key, changeable_callback monitor) {

@@ -15,10 +15,10 @@ namespace mammutfs {
 MammutConfig::MammutConfig(const char *filename,
                            int argc,
                            char **argv,
-                           std::shared_ptr<ModuleResolver> resolver) :
-	resolver(resolver),
+                           const std::shared_ptr<ModuleResolver> &resolver) :
+	resolver{resolver},
 	self(argv[0]),
-	config (new libconfig::Config()) {
+	config {std::make_shared<libconfig::Config>()} {
 	try {
 		config->readFile(filename);
 	} catch (libconfig::FileIOException &e) {

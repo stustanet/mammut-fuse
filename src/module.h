@@ -15,7 +15,13 @@ namespace mammutfs {
 class Communicator;
 class MammutConfig;
 /**
- * View API for a module.
+ * This the base fuse module, implementing a text replacement fuse translator
+ *
+ * Every syscall from fuse is passed into this module, where the relative fuse-path
+ * will be concatenated with the raid-path + user, generating a normal filesystem path,
+ * that has to exist on the host system.
+ * The syscall is then forwarded to this file, relievung us of the burdon of writing a
+ * full filesystem.
  */
 class Module {
 public:
@@ -58,7 +64,13 @@ public:
 
 	/** Translate a path for normal mammut operation
 	 *
-	 * A normal Path is /module/path.
+	 * This is the most central function of the full system
+	 * It translates the pathes like this:
+	 *
+	 * /module/xx/yy --> /srv/raids/raid1/user/xx/yy
+	 *
+	 * The raid path is determined with @find_raid, and the username comes
+	 * from the config file
 	 */
 	virtual int translatepath(const std::string &path, std::string &out);
 
@@ -68,8 +80,10 @@ public:
 	 */
 	virtual int find_raid(std::string &path);
 
+	/**
+	 * Option, if the module should be visible in the default lister
+	 */
 	virtual bool visible_in_root() { return true; }
-
 
 	/** Get file attributes.
 	 *
@@ -118,7 +132,10 @@ public:
 	virtual int symlink(const char *, const char *);
 
 	/** Rename a file */
-	virtual int rename(const char *from, const char *to, const char *from_raw, const char *to_raw);
+	virtual int rename(const char *from,
+	                   const char *to,
+	                   const char *from_raw,
+	                   const char *to_raw);
 
 	/** Change the permission bits of a file */
 	virtual int chmod(const char *, mode_t);

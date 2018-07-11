@@ -2,7 +2,7 @@
 
 #include "thread_queue.h"
 
-#include <map>
+#include <unordered_map>
 #include <functional>
 #include <thread>
 #include <memory>
@@ -35,11 +35,10 @@ class Communicator {
 public:
 	Communicator (std::shared_ptr<MammutConfig> config);
 
+	virtual ~Communicator();
+
 	/* Start the threads */
 	void start();
-
-
-	virtual ~Communicator();
 
 	void send(const std::string &data);
 	void inotify (const std::string &operation,
@@ -77,24 +76,21 @@ private:
 
 	void execute_command(std::string cmd);
 
-
 	std::shared_ptr<MammutConfig> config;
 	std::string socketname;
-
 	int socket;
 	volatile bool connected;
+
+	std::unique_ptr<std::thread> thrd_comm;
+	bool running;
 
 	struct command {
 		command_callback callback;
 		std::string helptext;
 	};
-	std::map<std::string, command> commands;
+	std::unordered_map<std::string, command> commands;
 
 	SafeQueue<std::string> queue;
-
-	std::unique_ptr<std::thread> thrd_comm;
-
-	bool running;
 
 	std::stringstream sstrbuf;
 };

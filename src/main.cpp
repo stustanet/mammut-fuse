@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 	// Setting up the resolver, that manages active modules
 	resolver = std::make_shared<mammutfs::ModuleResolver>();
 
-// Setting up the config that manges program wide configuration
+	// Setting up the config that manges program wide configuration
 	config = std::make_shared<mammutfs::MammutConfig>(
 		configfile,
 		argc,
@@ -56,19 +56,28 @@ void setup_main() {
 	// We need the anon lister first, because it will generate the anon mapping
 	auto anon_lister = std::make_shared<mammutfs::PublicAnonLister>(config, communicator);
 	/// Add all Modules to the following list
-	resolver->registerModule("default", std::make_shared<mammutfs::Default>(config, communicator));
+	resolver->registerModule("default",
+	                         std::make_shared<mammutfs::Default>(config, communicator));
 	resolver->registerModule("lister", anon_lister);
-	resolver->registerModule("private", std::make_shared<mammutfs::Private>(config, communicator));
-	resolver->registerModule("public", std::make_shared<mammutfs::Public>(config, communicator));
-	resolver->registerModule("anonym", std::make_shared<mammutfs::Anonymous>(config, communicator, anon_lister->get_mapping()));
-	resolver->registerModule("backup", std::make_shared<mammutfs::Backup>(config, communicator));
+	resolver->registerModule("private",
+	                         std::make_shared<mammutfs::Private>(config, communicator));
+	resolver->registerModule("public",
+	                         std::make_shared<mammutfs::Public>(config, communicator));
+	resolver->registerModule(
+		"anonym",
+		std::make_shared<mammutfs::Anonymous>(config,
+		                                      communicator,
+		                                      anon_lister->get_mapping()));
+	resolver->registerModule("backup",
+	                         std::make_shared<mammutfs::Backup>(config, communicator));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
 
 
 	std::stringstream ss;
-	ss << "New Mammutfs for user " << config->username() << " at " << config->mountpoint();
+	ss << "New Mammutfs for user " << config->username()
+	   << " at " << config->mountpoint();
 	syslog(LOG_INFO, ss.str().c_str());
 
 	std::cerr << ss.str() << std::endl;

@@ -27,6 +27,7 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 	connected(false) {
 	config->lookupValue("daemon_socket", this->socketname);
 
+	// Respond with all available commands
 	register_void_command("HELP", [this](const std::string &, std::string &resp) {
 			std::stringstream ss;
 			ss << "{\"commands\":[";
@@ -41,12 +42,14 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 			resp = ss.str();
 		});
 
-		register_void_command("USER", [this](const std::string &, std::string &resp) {
-				std::stringstream ss;
-				ss << "\"" << this->config->username() << "\"";
-				resp = ss.str();
+	// Respond with the configured username
+	register_void_command("USER", [this](const std::string &, std::string &resp) {
+			std::stringstream ss;
+			ss << "\"" << this->config->username() << "\"";
+			resp = ss.str();
 		});
 
+	// Display the specified config value
 	register_void_command("CONFIG", [this](const std::string &confkey,
 	                                       std::string &resp) {
 			std::string str;
@@ -59,6 +62,7 @@ Communicator::Communicator(std::shared_ptr<MammutConfig> config) :
 			}
 		}, "CONFIG:<key>");
 
+	// Some configs can be changed during runtime, using key=value
 	register_command("SETCONFIG", [this](const std::string &kvpair, std::string &resp) {
 			size_t pos = kvpair.find('=');
 			std::string key, value;
@@ -155,7 +159,7 @@ void Communicator::communication_thread() {
 	while (running) {
 		int connect_backoff = 1024;
 		bool initial_connection = true;
-		while(!this->connected) {
+		while(!this->connected && running) {
 			if (this->connect(initial_connection)) {
 				break;
 			}
@@ -300,7 +304,7 @@ void Communicator::execute_command(std::string cmd) {
 		data = cmd.substr(pos+1);
 		cmd = cmd.substr(0, pos);
 	}
-	// todo use multimap
+
 	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 	auto it = commands.find(cmd);
 	if (it != commands.end()) {
