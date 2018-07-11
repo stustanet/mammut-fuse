@@ -208,7 +208,7 @@ class MammutfsdBaseCommands:
         if not allow_targeting or not self.selected_client:
             await self.mfsd.sendall(cmd)
         else:
-            await self.selected_client.send(cmd)
+            await self.selected_client.write(cmd)
 
     async def command(self, cmd, allow_targeting=True):
         """
@@ -237,14 +237,14 @@ class MammutfsdBaseCommands:
         pass
     async def getclients(self, cmd):
         for client in self.mfsd._clients:
-            print("Client: {} mounted at {}".format(
+            await self.mfsd.write("Client: {} mounted at {}\n".format(
                 client.details['user'],
                 client.details['mountpoint']))
 
     async def focus_client(self, cmd):
         if len(cmd) <= 1 or not cmd[1]:
             self.selected_client = None
-            print("Unselected client")
+            await self.mfsd.write("Unselected client\n")
             return
 
         parameter = cmd[1]
@@ -252,7 +252,7 @@ class MammutfsdBaseCommands:
             if (client.details['user'] == parameter
                 or client.details['mountpoint'] == parameter):
                 self.selected_client = client
-                print("Selected Client: ", client.details)
+                await self.mfsd.write("Selected Client: %s\n"%str(client.details))
                 break
 
     async def on_fileop(self, client, fileop):

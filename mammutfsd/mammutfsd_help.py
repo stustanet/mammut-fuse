@@ -9,14 +9,15 @@ class MammutfsdHelp:
 
     async def display_help(self, _):
         for command, issuer in self.mfsd._commands.items():
-            print(" %s"%command)
+            await self.mfsd.write(" %s\n"%command)
             for plugin in issuer:
                 try:
-                    print(plugin.get_help(command))
+                    await self.mfsd.write(plugin.get_help(command) + "\n")
                 except AttributeError:
-                    print("\t|-", plugin.__qualname__)
+                    await self.mfsd.write("\t|- %s\n"%plugin.__qualname__)
                 except KeyError:
-                    print("\t|- Invalid Command for", plugin.__qualname__)
+                    await self.mfsd.write(
+                        "\t|- Invalid Command for %s\n"%plugin.__qualname__)
 
     async def teardown(self):
         return

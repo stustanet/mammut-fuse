@@ -16,6 +16,10 @@ logging.basicConfig(
 )
 
 class mammutfsdclient:
+    """
+    Represents one single connected mammutfs
+    """
+
     def __init__(self, reader, writer, mfsd):
         self.reader = reader
         self.writer = writer
@@ -68,8 +72,11 @@ class mammutfsdclient:
                 else:
                     if 'state' in data:
                         # This is a state message!
-                        self.mfsd.log.info("Last command returned: " + str(data))
+                        await self.mfsd.write("result: " + str(data) + "\n")
+                        await self.mfsd.writer.drain()
                     elif 'op' in data and 'module' in data:
+                        await self.mfsd.write("fileop: " + str(data) + "\n")
+                        await self.mfsd.writer.drain()
                         # Dispatch plugin calls to another coroutine
                         await self._plugin_fileop_queue.put(data)
                     else:
@@ -173,6 +180,9 @@ class MammutfsDaemon:
         self._clients = []
         self.client_removal_queue = asyncio.Queue()
 
+        self.reader = None
+        self.writer = None
+
     async def start(self, loop=None):
         """ Start the different parts of the daemon """
         if not loop:
@@ -241,27 +251,64 @@ class MammutfsDaemon:
             await to_remove.close()
 
 
+    async def write(self, message):
+        if not self.writer:
+            print(message)
+        else:
+            self.writer.write(message.encode('utf-8'))
+            await self.writer.drain()
+
+    async def wait_for_client(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
+
+        self.connect_event.set();
+
     async def interactionsocket(self):
         """
         Manage keyboard interaction in interactive mode
         """
 
-        reader = asyncio.StreamReader()
-        reader_protocol = asyncio.StreamReaderProtocol(reader)
-        await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
+        try:
+            _ = self.config['mammutfsd']['interaction']
+        except KeyError:
+            self.config['mammutfsd']['interaction'] = 'stdin'
 
-        while True:
-            line = await reader.readline()
-            line = line.decode('utf-8').strip()
-            if not line:
-                continue
-            lineargs = line.split(' ')
-            try:
-                asyncio.gather(*[callback(lineargs)
-                                 for callback in self._commands[lineargs[0]]])
-            except KeyError:
-                self.log.error("command not found: %s", lineargs[0])
-                # and hope it was the lineargs problem
+
+        if self.config['mammutfsd']['interaction'] == 'stdin':
+            self.reader = asyncio.StreamReader()
+            reader_protocol = asyncio.StreamReaderProtocol(self.reader)
+            await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
+            writer_transport, writer_protocol = await self.loop.connect_write_pipe(
+                asyncio.streams.FlowControlMixin, sys.stdout)
+            self.writer = asyncio.StreamWriter(writer_transport, writer_protocol, None,
+                                          self.loop)
+            server = None
+
+        elif self.config['mammutfsd']['interaction'] == 'net':
+            port = self.config['mammutfsd']['port']
+            self.connect_event = asyncio.Event(loop=self.loop)
+            server = await asyncio.start_server(self.wait_for_client, '127.0.0.1',
+                                                int(port), loop=self.loop)
+            await self.connect_event.wait()
+
+        try:
+            while True:
+                line = await self.reader.readline()
+                line = line.decode('utf-8').strip()
+                if not line:
+                    continue
+                lineargs = line.split(' ')
+                try:
+                    asyncio.gather(*[callback(lineargs)
+                                     for callback in self._commands[lineargs[0]]])
+                except KeyError:
+                    await self.write("ERROR: command not found: %s\n"%lineargs[0])
+                    # and hope it was the lineargs problem
+        finally:
+            if server:
+                server.close()
+                await server.wait_closed()
 
     async def sendall(self, command):
         await asyncio.gather(*[client.write(command) for client in self._clients ])
