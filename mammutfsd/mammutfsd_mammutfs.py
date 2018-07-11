@@ -68,7 +68,7 @@ class AnonMap:
         # TODO does this really have to be recreated every time?
         known_entries = [value['mappedpath'].split('/')[-1]
                          for key, value in self.mapping.items()
-                         if key[0] != 'public' ]
+                         if key[0] != 'public']
 
         path = path.strip('/').split('/')[0]
 
@@ -232,16 +232,36 @@ class MammutfsdBaseCommands:
         await self.send(cmd, True)
 
     async def setconfig(self, cmd):
-        pass
+        """
+        Set a config value at one or all connected mammutfs systems
+        """
+        if len(cmd) < 3:
+            self.mfsd.write("Error: Usage {} config value\n".format(cmd[0]))
+        self.send("SETCONFIG " + cmd[1] + "=" + cmd[2], allow_targeting=True)
+
     async def getconfig(self, cmd):
-        pass
-    async def getclients(self, cmd):
+        """
+        get a config value for one or all connected mammutfs systems
+        """
+        if len(cmd) < 2:
+            self.mfsd.write("Error: Usage {} config\n".format(cmd[0]))
+        self.send("CONFIG " + cmd[1], allow_targeting=True)
+
+    async def getclients(self, _):
+        """
+        get a list of connected clients together with some raw information
+        """
         for client in self.mfsd._clients:
             await self.mfsd.write("Client: {} mounted at {}\n".format(
                 client.details['user'],
                 client.details['mountpoint']))
 
     async def focus_client(self, cmd):
+        """
+        Select a single client, to target all following commands only to this
+        client.
+        The selection argument may be either name or mountpoint
+        """
         if len(cmd) <= 1 or not cmd[1]:
             self.selected_client = None
             await self.mfsd.write("Unselected client\n")
@@ -284,6 +304,9 @@ class MammutfsdBaseCommands:
             await self.command(['reload'], allow_targeting=False)
 
     async def teardown(self):
+        """
+        None required
+        """
         return
 
 

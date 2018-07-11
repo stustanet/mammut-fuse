@@ -1,6 +1,9 @@
 import asyncio
 
 class MammutfsdHelp:
+    """
+    Help display module, used to display all available commands
+    """
     def __init__(self, loop, mfsd):
         self.mfsd = mfsd
         self.loop = loop
