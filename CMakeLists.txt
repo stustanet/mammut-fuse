@@ -5,12 +5,13 @@ project (mammutfs)
 set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 message (${CMAKE_MODULE_PATH})
 
-set(SAVE_FILE_HANDLES NO CACHE BOOL "Try to limit the amount of file handles used, might conflict with NFS")
-set(ENABLE_TRACELOG YES CACHE BOOL "Enable verbose trace logging of every syscall")
+set(SAVE_FILE_HANDLES NO CACHE BOOL
+	"limit the amount of file handles used, might cause problems with NFS")
+set(ENABLE_TRACELOG YES CACHE BOOL
+	"Enable verbose trace logging of every syscall")
 
-
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)
-
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
+	${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
 set (SOURCES
 	src/communicator.cpp
@@ -31,17 +32,17 @@ set (HEADERS
 	src/thread_queue.h
 )
 
-include(src/module/CMakeLists.txt)
 
 find_package(Config++ REQUIRED)
 find_package(fuse REQUIRED)
 
-add_definitions(" -ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 -Wall -Wextra
+add_definitions("-ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 -Wall -Wextra
 -pedantic")
 add_executable(mammutfs ${SOURCES} ${HEADERS})
-
-target_link_libraries(mammutfs ${CONFIG++_LIBRARY} ${FUSE_LIBRARIES} pthread)
-
 set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
 
+# for config.h
+target_include_directories(mammutfs PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(mammutfs ${CONFIG++_LIBRARY} ${FUSE_LIBRARIES} pthread)
 
+add_subdirectory(src/module)

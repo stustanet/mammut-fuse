@@ -1,4 +1,4 @@
-set(HEADER ${HEADER}
+target_sources(mammutfs PRIVATE
 	src/module/anonymous.h
 	src/module/backup.h
 	src/module/default.h
