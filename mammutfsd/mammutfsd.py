@@ -86,10 +86,8 @@ class mammutfsdclient:
                     if 'state' in data:
                         # This is a state message!
                         await self.mfsd.write("result: " + str(data) + "\n")
-                        await self.mfsd.writer.drain()
                     elif 'op' in data and 'module' in data:
                         await self.mfsd.write("fileop: " + str(data) + "\n")
-                        await self.mfsd.writer.drain()
                         # Dispatch plugin calls to another coroutine
                         await self._plugin_fileop_queue.put(data)
                     else:
@@ -313,7 +311,7 @@ class MammutfsDaemon:
         or to the networksocket
         """
         if not self.writer:
-            print(message)
+            print(message, end='')
         else:
             try:
                 self.writer.write(message.encode('utf-8'))
@@ -323,9 +321,8 @@ class MammutfsDaemon:
 
     async def wait_for_observer(self, reader, writer):
         if self.writer:
-            self.writer.write("Your connection has been overwritten. "
-                              "You will not receive any more data")
-            await self.writer.drain()
+            await self.write("Your connection has been overwritten. "
+                             "You will not receive any more data\n")
 
         self.reader = reader
         self.writer = writer
