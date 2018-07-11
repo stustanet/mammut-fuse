@@ -317,7 +317,7 @@ class MammutfsDaemon:
                 self.writer.write(message.encode('utf-8'))
                 await self.writer.drain()
             except IOError:
-                self.writer = self.stdin_writer
+                self.writer = self.stdout_writer
 
     async def wait_for_observer(self, reader, writer):
         if self.writer:
