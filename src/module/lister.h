@@ -24,7 +24,7 @@ public:
 				int cnt = rescan();
 				if (cnt < 0) return false;
 				std::stringstream ss;
-				ss << "\"newsize\":\"" << cnt << "\"";
+				ss << "{\"newsize\":\"" << cnt << "\"}";
 				resp = ss.str();
 				return true;
 			}, "Reload the anonmap");
