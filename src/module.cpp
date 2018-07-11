@@ -9,7 +9,7 @@
 #include <iostream>
 #include <sstream>
 
-
+#include "config.h"
 
 namespace mammutfs {
 
@@ -91,15 +91,17 @@ int Module::find_raid(std::string &path) {
 }
 
 void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path) {
-	if (static_cast<int>(lvl) < static_cast<int>(max_loglvl)) {
+	if (static_cast<int>(lvl) < static_cast<int>(this->max_loglvl)) {
 		return;
 	}
 
 	std::string prefix, suffix = "\033[0m";
 	switch(lvl) {
+#ifdef ENABLE_TRACELOG
 	case LOG_LEVEL::TRACE:
 		prefix = "\033[0m"; // nothing;
 		break;
+#endif
 	case LOG_LEVEL::INFO:
 		prefix = "\033[36m"; // blue;
 		break;
@@ -134,22 +136,18 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 }
 
 
+#ifdef ENABLE_TRACELOG
 void Module::trace(const std::string &method,
                    const std::string &path,
                    const std::string &second_path) {
-#ifdef ENABLE_TRACELOG
 	std::stringstream ss;
 	ss << method << ": " << path;
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
 	log(LOG_LEVEL::TRACE, ss.str());
-#else
-	(void)method;
-	(void)path;
-	(void)second_path;
-#endif
 }
+#endif
 
 
 void Module::info(const std::string &method,

@@ -1,13 +1,13 @@
 #pragma once
 
 #include "mammut_config.h"
+#include "config.h"
 
 #include <unordered_map>
 #include <map>
 
 #include <fuse.h>
 
-// Forward declare DIR in order to not include
 #include <dirent.h>
 
 namespace mammutfs {
@@ -19,18 +19,24 @@ class Module {
 public:
 	Module (const std::string &modname, std::shared_ptr<MammutConfig> config);
 
-	enum class LOG_LEVEL {
-		TRACE,
-		INFO,
-		WRN,
-		ERR
+	enum class LOG_LEVEL : int {
+		TRACE = 0,
+		INFO = 1,
+		WRN = 2,
+		ERR = 3,
 	};
 
 	void log(LOG_LEVEL lvl, const std::string &msg, const std::string &path = "" );
 
+#ifdef ENABLE_TRACELOG
 	void trace(const std::string &method,
 	           const std::string &path,
 	           const std::string &second_path = "");
+#else
+	inline void trace(const std::string &,
+	                  const std::string &,
+	                  const std::string & = "") {};
+#endif
 
 	void info(const std::string &method,
 	          const std::string &message,
@@ -369,7 +375,7 @@ private:
 	// The list of open files - and our internal file descriptors.
 	// It is not supported generally to use 64 bit fds.
 	std::unordered_map<std::string, open_file_t> open_files;
-	
+
 	// The maximum number of files that are to be represented natively.
 	// If the size of open_files reaches the limit, newly allocated files
 	// are stored temporarily
@@ -400,7 +406,7 @@ protected:
 	 * This has to be used whenever a file handle is required.
 	 */
 	open_file_handle_t file(const std::string &);
-	
+
 	void close_file(const char *path); // TODO: This has to be called in rename
 	void close_file(const std::string &path);
 
