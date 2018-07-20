@@ -235,6 +235,10 @@ class MammutfsDaemon:
         await asyncio.start_unix_server(self.client_connected, loop=self.loop,
                                         path=self.config['daemon_socket'])
 
+        # now we have to change the sockets permissions to 0777 - so mammutfs
+        # can actually connect
+        os.chmod(self.config['daemon_soket'], 0o777)
+
         if self.config["mammutfsd"]["interactive"]:
             self._interactionsocket = loop.create_task(self.interactionsocket())
 
