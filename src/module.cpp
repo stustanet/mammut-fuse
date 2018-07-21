@@ -329,7 +329,9 @@ void Module::dump_open_files(std::ostream &s) {
 int Module::getattr(const char *path, struct stat *statbuf) {
 	// Since getattr is spaming a _lot_, it should be more quiet to make the
 	// remaining output more readable.
-	//this->trace("getattr", path);
+#ifdef TRACE_GETATTR
+	this->trace("getattr", path);
+#endif
 	memset(statbuf, 0, sizeof(*statbuf));
 	if (strcmp(path, "/") == 0) {
 		statbuf->st_dev         = 0;               // IGNORED Device

@@ -13,6 +13,9 @@ set(ENABLE_TRACELOG YES CACHE BOOL
 set(CONFIG_DEBUG NO CACHE BOOL
 	"Enable verbose debugging of config values")
 
+set(TRACE_GETATTR NO CACHE BOOL
+	"Enable also getattr tracelog (very noisy)")
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
