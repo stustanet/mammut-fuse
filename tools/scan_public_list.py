@@ -11,7 +11,6 @@ import sys
 import os
 import string
 import random
-import asyncio
 import socket
 import libconf
 
@@ -137,7 +136,7 @@ def trigger_update(config):
     print(retval.decode('utf-8'))
 
 
-def send_to_mammutfs(config, command):
+def send_to_mammutfs(config, cmdstr):
     """
     Send a command to the running mammutfsd daemon
     """
@@ -146,9 +145,14 @@ def send_to_mammutfs(config, command):
         print("Mammutfsd was not configured for net interaction, cannot communicate!")
         sys.exit(-1)
 
-    port = config['mammutfsd']['port']
+    command = bytearray(cmdstr)
+    if command[-1] != "\n":
+        command += b"\n"
+
+    port = int(config['mammutfsd']['port'])
+    host = '127.0.0.1'
     mammutfsd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    mammutfsd.connect(port, '127.0.0.1')
+    mammutfsd.connect((host, port))
     mammutfsd.send(command)
     retval = mammutfsd.recv(1024)
     mammutfsd.close()

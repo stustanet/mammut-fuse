@@ -56,7 +56,7 @@ class mammutfsdclient:
                 if 'op' in data and data['op'] == 'hello':
                     self.details = data
                     del self.details['op']
-                    self.mfsd.log.info("client connect. announced user: %s",
+                    self.mfsd.log.info("fs connect. announced user: %s",
                                       self.details['user'])
                     break
                 else:
@@ -147,7 +147,7 @@ class mammutfsdclient:
         commands
         """
         self.mfsd.client_removal_queue.put_nowait(self)
-        self.mfsd.log.info("client disconnect")
+        self.mfsd.log.info("fs client disconnect")
 
 
     async def anonym_raid(self):
@@ -240,7 +240,7 @@ class MammutfsDaemon:
 
         # now we have to change the sockets permissions to 0777 - so mammutfs
         # can actually connect
-        os.chmod(self.config['daemon_soket'], 0o777)
+        os.chmod(self.config['daemon_socket'], 0o777)
 
         if self.config["mammutfsd"]["interactive"]:
             self._interactionsocket = loop.create_task(self.interactionsocket())
@@ -331,6 +331,7 @@ class MammutfsDaemon:
             await self.write("Your connection has been overwritten. "
                              "You will not receive any more data\n")
 
+        print("mammutfsd: interaction client connect")
         self.reader = reader
         self.writer = writer
         self.connect_event.set()
@@ -369,14 +370,20 @@ class MammutfsDaemon:
 
         try:
             while True:
+                if not self.reader:
+                    # The reader is none if it disconnected previously
+                    print("mammutfsd: interaction client disconnect")
+                    await self.connect_event.wait()
+                    self.connect_event.clear()
+
                 line = await self.reader.readline()
                 if not line:
                     self.writer = self.stdout_writer
                     self.reader = None
-                    if server:
-                        await self.connect_event.wait()
+                    continue
                 line = line.decode('utf-8').strip()
                 if not line:
+                    self.write("") # We send an empty frame, to stop listeness
                     continue
                 lineargs = line.split(' ')
                 try:
@@ -435,7 +442,7 @@ def main():
     Actually start the mammutfs daemon
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', help="Configfile to load")
+    parser.add_argument('--config', required=True, help="Configfile to load")
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()
