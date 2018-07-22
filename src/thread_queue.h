@@ -13,7 +13,7 @@ class SafeQueue
 {
 public:
 	SafeQueue():
-		eventid(eventfd(0, EFD_CLOEXEC)) {}
+	eventid(eventfd(0, EFD_CLOEXEC)) {}
 	~SafeQueue(void) {}
 
 	// Add an element to the queue.

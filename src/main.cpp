@@ -22,6 +22,11 @@ static std::shared_ptr<mammutfs::Communicator> communicator;
 int main(int argc, char **argv) {
 	openlog("mammutfs", LOG_PID, 0);
 
+	if ((getuid() == 0) || (geteuid() == 0)) {
+		fprintf(stderr, "Mammutfs must not run as root - it would open unacceptable security holes!\n");
+		return 1;
+	}
+
 	const char *configfile = "mammutfs.cfg";
 	if (argc >= 2) {
 		configfile = argv[1];

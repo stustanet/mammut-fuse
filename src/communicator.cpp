@@ -119,8 +119,9 @@ bool Communicator::connect(bool initial_attempt) {
 			return false;
 		}
 		char buffer[1024] = {0};
-		strcat(buffer, "failed to connect: ");
-		strcat(buffer, strerror(errno));
+		snprintf(buffer, sizeof(buffer),
+		         "ERROR mammutfsd socket: failed to connect: %s reason: %s",
+		         socketname.c_str(), strerror(errno));
 		syslog(LOG_ERR, buffer);
 		fprintf(stderr, buffer);
 		fprintf(stderr, "\n");
