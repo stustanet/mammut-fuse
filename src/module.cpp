@@ -147,6 +147,7 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 		break;
 	case LOG_LEVEL::INFO:
 		syslog(LOG_INFO, ss.str().c_str());
+		break;
 	case LOG_LEVEL::WRN:
 		syslog(LOG_WARNING, ss.str().c_str());
 		break;
