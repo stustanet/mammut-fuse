@@ -149,7 +149,7 @@ def trigger_update(config):
     """
     retval = send_to_mammutfs(config, b"reload")
     try:
-        status = json.loads(retval)
+        status = json.loads(retval.decode('utf-8'))
     except json.JSONDecodeError:
         print("Received invalid response: ", retval)
         return -1
