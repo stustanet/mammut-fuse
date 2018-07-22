@@ -12,10 +12,8 @@ import os
 import string
 import random
 import socket
+import json
 import libconf
-
-# mammutfs specific imports
-from socket_connect import MammutSocket
 
 ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
@@ -36,7 +34,6 @@ def list_anon_dir(path, old_entries):
     """
     stat = dict(STAT_TEMPLATE)
 
-
     public_entries = []
     for anonuser in os.listdir(path):
         anonpath = path + "/" + anonuser
@@ -49,11 +46,15 @@ def list_anon_dir(path, old_entries):
             except FileNotFoundError:
                 pass
 
-            if out_path in old_entries:
-                stat['known'] += 1
-                public_entries.append((old_entries[out_path], out_path))
-                #print("known: %s"%out_path)
-            else:
+            known = False
+            for okey, oval in old_entries.items():
+                if out_path == oval:
+                    stat['known'] += 1
+                    public_entries.append((okey, out_path))
+                    known = True
+                    break
+
+            if not known:
                 stat['new'] += 1
                 new_entry = ""
                 for char in entry:
@@ -71,9 +72,7 @@ def list_anon_dir(path, old_entries):
                     test = "a_" + new_entry + "_" + suffix
                     if not test in public_entries:
                         break
-                new_path = anonpath + "/" + entry
-                public_entries.append((test, new_path))
-                #print("new: %s"%new_path)
+                public_entries.append((test, anonpath + "/" + entry))
     return public_entries, stat
 
 
@@ -97,8 +96,8 @@ def write_anonmap(anonmapfile, anonmap):
     Write the new anonymous mapping
     """
     with io.open(anonmapfile, "w") as outf:
-        for entry in sorted(anonmap, key=lambda e: e[0]):
-            line = entry[0] + ":" + entry[1] + "\n"
+        for key, value in sorted(anonmap.items()):
+            line = value + ":" + key + "\n"
             outf.write(line)
 
 
@@ -106,6 +105,9 @@ def generate_anonmap(config, existing_anonmap):
     """
     Iterate over all raids and check the anonym-folders for new entries.
     """
+    # We use a list here, because it is much easier to combine two lists than
+    # two dicts. We convert it to dict later
+
     public_entries = []
     stats = dict(STAT_TEMPLATE)
     for basepath in config['raids']:
@@ -126,14 +128,36 @@ def generate_anonmap(config, existing_anonmap):
             stats = {key: oldv + stat[key] for key, oldv in stats.items()}
         except FileNotFoundError:
             pass
+
+    # here it is converted into a dict, because from now on it is better to work
+    # with a dict
+    new_anonmap = {key: value for key, value in public_entries}
+
     stats['lost'] = len(existing_anonmap) - stats['known'] - stats['public']
-    return public_entries, stats
+    changed = len(existing_anonmap) != len(new_anonmap)
+    if not changed:
+        for key, value in new_anonmap.items():
+            if not key in existing_anonmap or existing_anonmap[key] != value:
+                changed = True
+                break
+    return new_anonmap, stats, changed
 
 
 def trigger_update(config):
+    """
+    Send mammutfsd that it should update the anonmapping
+    """
     retval = send_to_mammutfs(config, b"reload")
-    # TODO: actually parse the output
-    print(retval.decode('utf-8'))
+    try:
+        status = json.loads(retval)
+    except json.JSONDecodeError:
+        print("Received invalid response: ", retval)
+        return -1
+
+    if status['state'] != 'success':
+        print("Have an error: ", retval)
+        return 1
+    return 0
 
 
 def send_to_mammutfs(config, cmdstr):
@@ -170,15 +194,19 @@ def main(configfile, outfile, oldfile):
     with io.open(configfile) as cfgfile:
         config = libconf.load(cfgfile)
 
-    new_anonmap, stats = generate_anonmap(config, existing_anonmap)
+    new_anonmap, stats, changed = generate_anonmap(config, existing_anonmap)
 
     write_anonmap(outfile, new_anonmap)
 
-    if stats['new'] != 0 or stats['lost'] != 0:
+    if changed:
+#        print ("old: ", existing_anonmap)
+#        print ("")
+#        print ("new ", new_anonmap)
+
+
         print("Known: %d; New: %d; Public: %d; Lost: %d"%
               (stats['known'], stats['new'], stats['public'], stats['lost']))
-
-    trigger_update(config)
+        trigger_update(config)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
