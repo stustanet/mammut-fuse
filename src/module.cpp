@@ -135,16 +135,18 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 	}
 
 	std::stringstream ss;
-	ss <<  "[" << modname << "] " << suffix << msg;
+	ss <<  "[" << modname << "] " <<  msg;
 	if (path != "") {
 		ss << ": " << path;
 	}
-	std::cerr << prefix << ss.str() << "\033[0m" << std::endl;
+	std::cerr << prefix << ss.str() << suffix << std::endl;
 
 	// WRN and ERR to syslog
 	switch(lvl) {
 	default:
 		break;
+	case LOG_LEVEL::INFO:
+		syslog(LOG_INFO, ss.str().c_str());
 	case LOG_LEVEL::WRN:
 		syslog(LOG_WARNING, ss.str().c_str());
 		break;
