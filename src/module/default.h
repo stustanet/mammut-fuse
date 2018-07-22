@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../module.h"
+#include <unistd.h>
 
 namespace mammutfs {
 
@@ -10,27 +11,31 @@ public:
 	        const std::shared_ptr<Communicator> &comm) :
 		Module("default", config, comm) {}
 
-	int translatepath(const std::string &path, std::string &out) override {
-		size_t slash = path.find("/", 1);
-		if (slash == std::string::npos) {
-			out = slash;
-		} else {
-			out = std::string(path, slash);
-		}
-		return 0;
+	int translatepath(const std::string &path, std::string &/*out*/) override {
+		// It should not happen that translatepath is called - all module::*
+		// functions will do this, so check the log, which one it was and
+		// implement it here - doing some sensible stuff!
+		this->error("default::translatepath",
+		            "An operation called translatepath for the default path!",
+		            path);
+		return -ENOTSUP;
 	}
 
 	bool visible_in_root() override { return false; }
 
 	int getattr(const char *path, struct stat *statbuf) override {
+#ifdef TRACE_GETATTR
+		this->trace("default::getattr", path);
+#endif
 		if (strcmp(path, "/") == 0) {
 			/*int retval = */Module::getattr(path, statbuf);
 			// Owner for / needs to be root - else chroot for ftp and friends wont work.
 			statbuf->st_uid         = 0; //config->anon_uid;
 			statbuf->st_gid         = 0; //config->anon_gid;
+			statbuf->st_mode        = S_IFDIR | 0555;  // Protection
 			return 0;
 		}
-		this->trace("default::getattr: FAILED!", path);
+		this->trace("default::getattr: FAILED trying to access non-root path!", path);
 		return -ENOENT;
 	}
 
@@ -52,11 +57,9 @@ public:
 	int readdir(const char *path,
 	            void *buf,
 	            fuse_fill_dir_t filler,
-	            off_t offset,
-	            struct fuse_file_info *fi) override {
-		(void) path;
-		(void) offset;
-		(void) fi;
+	            off_t /*offset*/,
+	            struct fuse_file_info */*fi*/) override {
+		this->trace("default::readdir", path);
 
 		filler(buf, ".", NULL, 0);
 		filler(buf, "..", NULL, 0);
@@ -85,23 +88,18 @@ public:
 		    __fsword_t f_spare[xxx]; // Padding bytes reserved for future use
 		    };
 		*/
-		int retstat = 0;
-		std::string translated;
-		if ((retstat = this->translatepath(path, translated))) {
-			return retstat;
-		}
-
-		// get stats for underlying filesystem
-		retstat = ::statvfs(translated.c_str(), statv);
-		if (retstat < 0) {
-			retstat = -errno;
-			this->log(LOG_LEVEL::WRN, "mammut_statfs statvfs");
-		}
-
-		return retstat;
+		// TODO: we need to find better values for this
+		statv->f_bsize = 40960;
+		statv->f_blocks = 4200;
+		statv->f_bfree = 1000;
+		statv->f_bavail = 1000;
+		statv->f_files = 1008;
+		statv->f_ffree = 100;
+		return 0;
 	}
 
-	int releasedir(const char *, struct fuse_file_info *) override {
+	int releasedir(const char *path, struct fuse_file_info *) override {
+		this->trace("default::closedir", path);
 		return 0;
 	}
 };

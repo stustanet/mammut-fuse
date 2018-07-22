@@ -335,14 +335,13 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 	memset(statbuf, 0, sizeof(*statbuf));
 	if (strcmp(path, "/") == 0) {
 		statbuf->st_dev         = 0;               // IGNORED Device
-		statbuf->st_ino         = 999;             // IGNORED inode number
+		statbuf->st_ino         = 1;
 		statbuf->st_mode        = S_IFDIR | 0755;  // Protection
-		statbuf->st_nlink       = 0;               // Number of Hard links
+		statbuf->st_nlink       = 1;               // Number of Hard links
 		statbuf->st_uid         = config->user_uid;
 		statbuf->st_gid         = config->user_gid;
 		statbuf->st_rdev        = 0;
 		statbuf->st_size        = 0;
-		statbuf->st_blksize     = 0;  // IGNORED
 		statbuf->st_blocks      = 0;
 		statbuf->st_atim.tv_sec = 0;  // Last Access
 		statbuf->st_mtim.tv_sec = 0;  // Last Modification
