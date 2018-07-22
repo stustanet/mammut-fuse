@@ -12,8 +12,7 @@ class RedisFiller:
         mfsd.register("stats", self.stats)
 
     async def stats(self, args):
-        print("ARGS: ", args)
-        print("Sorry no stats for you")
+        await self.mfsd.write("Sorry no stats for you\n")
 
 
 async def init(loop, mfsd):

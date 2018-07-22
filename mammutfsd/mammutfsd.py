@@ -216,7 +216,7 @@ class MammutfsDaemon:
         self._commands = {}
         self._plugins = []
         self._clients = []
-        self.client_removal_queue = asyncio.Queue()
+        self.client_removal_queue = None
 
         self.loop = None
         self.connect_event = None
@@ -230,6 +230,9 @@ class MammutfsDaemon:
         if not loop:
             loop = asyncio.get_event_loop()
         self.loop = loop
+
+        self.client_removal_queue = asyncio.Queue(loop=self.loop)
+
         self.connect_event = asyncio.Event(loop=self.loop)
 
         await asyncio.start_unix_server(self.client_connected, loop=self.loop,

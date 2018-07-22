@@ -3,8 +3,6 @@
 Update or create an anonmap file for use with mammutfs.
 Should be triggered regularely, in order to keep the mapping up to date.
 
-TODO: - trigger running mammutfs-instances to re-read the config
-
 Johannes Walcher 2017-2018
 """
 
@@ -134,25 +132,28 @@ def generate_anonmap(config, existing_anonmap):
 
 
 def trigger_update(config):
-    """
-    Send the command to reload the anonmap to all running mammutfs instances
-    """
-    loop = asyncio.get_event_loop()
+    retval = send_to_mammutfs(config, b"reload")
+    # TODO: actually parse the output
+    print(retval.decode('utf-8'))
 
-    try:
-        count = 0
-        for socketfile in os.listdir(config['socket_directory']):
-            print("Reloading mammutfs @%s"%socketfile)
-            count += 1
-            try:
-                mfssocket = MammutSocket(loop, socketfile)
-                loop.run_until_complete(mfssocket.send('FORCE-RELOAD\n'))
-                mfssocket.close()
-            except socket.error:
-                print("Error communicating")
-        print("Successfully poked all (%d) running mammutfs-instances"%count)
-    except FileNotFoundError:
-        print("Could not read socket directory: %s"%config['socket_directory'])
+
+def send_to_mammutfs(config, command):
+    """
+    Send a command to the running mammutfsd daemon
+    """
+    # Check mammutfsd config
+    if config['mammutfsd']['interaction'] != "net":
+        print("Mammutfsd was not configured for net interaction, cannot communicate!")
+        sys.exit(-1)
+
+    port = config['mammutfsd']['port']
+    mammutfsd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    mammutfsd.connect(port, '127.0.0.1')
+    mammutfsd.send(command)
+    retval = mammutfsd.recv(1024)
+    mammutfsd.close()
+    return retval
+
 
 
 def main(configfile, outfile, oldfile):
@@ -169,11 +170,11 @@ def main(configfile, outfile, oldfile):
 
     write_anonmap(outfile, new_anonmap)
 
-    print("Known: %d; New: %d; Public: %d; Lost: %d"%
-          (stats['known'], stats['new'], stats['public'], stats['lost']))
+    if stats['new'] != 0 or stats['lost'] != 0:
+        print("Known: %d; New: %d; Public: %d; Lost: %d"%
+              (stats['known'], stats['new'], stats['public'], stats['lost']))
 
     trigger_update(config)
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
