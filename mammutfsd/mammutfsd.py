@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 
+"""
+the mammutfsd management daemon controls the interaction between different
+running instances of mammutfs
+
+It also manages interfacing with different tools that depend on the inotify
+messages being sent by the filesystem instances, for example to reload the
+anonmap
+"""
+
 import asyncio
 import json
 import logging
@@ -15,7 +24,8 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
-class mammutfsdclient:
+class MammutfsdClient:
+    # pylint: disable=too-many-instance-attributes
     """
     Represents one single connected mammutfs
     """
@@ -57,7 +67,7 @@ class mammutfsdclient:
                     self.details = data
                     del self.details['op']
                     self.mfsd.log.info("fs connect. announced user: %s",
-                                      self.details['user'])
+                                       self.details['user'])
                     break
                 else:
                     self.mfsd.log.warning("Invalid client hello received ", line)
@@ -79,7 +89,7 @@ class mammutfsdclient:
                 data = json.loads(line.decode('utf-8'))
                 if self._request_pending:
                     # A request can intercept the next flying message
-                    # TODO: this might actually lead to races, when a file is
+                    # this might actually lead to races, when a file is
                     # changed at the same time
                     await self._request_queue.put(data)
                 else:
@@ -273,9 +283,8 @@ class MammutfsDaemon:
         """
         Read the list from the configfile and import the modules
         """
-        configured_plugins = list(self.config["mammutfsd"]["plugins"]) + \
-                             [ 'mammutfsd_help' ]
-        for pluginname in configured_plugins:
+        cfg_plugins = list(self.config["mammutfsd"]["plugins"])
+        for pluginname in cfg_plugins + ['mammutfsd_help']:
             try:
                 module = __import__(pluginname)
                 self._plugins.append(await module.init(self.loop, self))
@@ -306,7 +315,7 @@ class MammutfsDaemon:
         """
         Called whenever a new mammutfs connected
         """
-        client = mammutfsdclient(reader, writer, self)
+        client = MammutfsdClient(reader, writer, self)
         self._clients.append(client)
         await self.call_plugin('on_client', client, {})
         await client.run()
@@ -327,6 +336,10 @@ class MammutfsDaemon:
                 self.writer = self.stdout_writer
 
     async def wait_for_observer(self, reader, writer):
+        """
+        Handler function called whenever an observer connects.
+        This is used to connect read and write pipes
+        """
         if self.writer:
             await self.write("Your connection has been overwritten. "
                              "You will not receive any more data\n")
@@ -350,7 +363,7 @@ class MammutfsDaemon:
         writer_transport, writer_protocol = await self.loop.connect_write_pipe(
             asyncio.streams.FlowControlMixin, sys.stdout)
         self.stdout_writer = asyncio.StreamWriter(writer_transport, writer_protocol, None,
-                                            self.loop)
+                                                  self.loop)
         server = None
 
         if self.config['mammutfsd']['interaction'] == 'stdin':
@@ -383,7 +396,7 @@ class MammutfsDaemon:
                     continue
                 line = line.decode('utf-8').strip()
                 if not line:
-                    self.write("") # We send an empty frame, to stop listeness
+                    await self.write("") # We send an empty frame, to stop listeness
                     continue
                 lineargs = line.split(' ')
                 try:
@@ -401,7 +414,7 @@ class MammutfsDaemon:
         """
         Send the command to all connected clients
         """
-        await asyncio.gather(*[client.write(command) for client in self._clients ])
+        await asyncio.gather(*[client.write(command) for client in self._clients])
 
     async def teardown(self):
         """
@@ -453,6 +466,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        print("Thank you for using the daemon. Time to say goodbye")
         loop.run_until_complete(mammutfs.teardown())
 
 if __name__ == "__main__":
