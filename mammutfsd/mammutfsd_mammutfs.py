@@ -2,6 +2,7 @@ import asyncio
 import os
 import string
 import random
+import tempfile
 
 ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
@@ -166,13 +167,25 @@ class AnonMap:
     def write_anonmap(self):
         """
         Store the loaded anonmap back to the filesystem
+
+        1. Create a temporary file with the new anonmap
+        2. Flush to disk
+        3. Atomically replace the old anonmap
         """
         cnt = 0
-        with open(self.mapfile, 'w+') as anonmapfd:
+
+        tmpfile = self.mapfile + ".new"
+        tmpfile, tmpname = tempfile.mkstemp('anon.map.mammutfsd')
+
+        try:
             for entry in self.mapping.values():
                 cnt += 1
                 line = self.create_storable_entry(entry)
-                anonmapfd.write(line)
+                tmpfile.write(line)
+        finally:
+            tmpfile.flush()
+            tmpfile.close()
+        os.rename(tmpname, self.mapfile)
         print("updated anonmap {} with {} entries".format(self.mapfile, cnt))
 
 class MammutfsdBaseCommands:

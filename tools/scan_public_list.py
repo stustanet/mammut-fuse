@@ -14,6 +14,7 @@ import random
 import socket
 import json
 import libconf
+import tempfile
 
 ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
@@ -94,11 +95,20 @@ def read_anonmap(anonmapfile):
 def write_anonmap(anonmapfile, anonmap):
     """
     Write the new anonymous mapping
+
+    1. Create a temporary file with the new anonmap
+    2. Flush to disk
+    3. Atomically replace the old anonmap
     """
-    with io.open(anonmapfile, "w") as outf:
+    tmpfile, tmpname = tempfile.mkstemp('anon.map.scan')
+    try:
         for key, value in sorted(anonmap.items()):
             line = value + ":" + key + "\n"
-            outf.write(line)
+            tmpfile.write(line)
+    finally:
+        tmpfile.flush()
+        tmpfile.close()
+    os.rename(tmpname, anonmapfile)
 
 
 def generate_anonmap(config, existing_anonmap):
