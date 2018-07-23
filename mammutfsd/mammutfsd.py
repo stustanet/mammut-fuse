@@ -252,7 +252,7 @@ class MammutfsDaemon:
         # can actually connect
         os.chmod(self.config['daemon_socket'], 0o777)
 
-        if self.config["mammutfsd"]["interactive"]:
+        if self.config["mammutfsd"]["interaction"] in ("net", "stdin"):
             self._interactionsocket = loop.create_task(self.interactionsocket())
 
         self._janitortask = loop.create_task(self.monitorsocket())
