@@ -111,7 +111,7 @@ def write_anonmap(anonmapfile, anonmap):
     with open(tmpname, "w+") as tmpfile:
         try:
             for key, value in sorted(anonmap.items()):
-                line = value + ":" + key + "\n"
+                line = key + ":" + value + "\n"
                 tmpfile.write(line)
         finally:
             tmpfile.flush()
