@@ -100,14 +100,21 @@ def write_anonmap(anonmapfile, anonmap):
     2. Flush to disk
     3. Atomically replace the old anonmap
     """
-    tmpfile, tmpname = tempfile.mkstemp('anon.map.scan')
-    try:
-        for key, value in sorted(anonmap.items()):
-            line = value + ":" + key + "\n"
-            tmpfile.write(line)
-    finally:
-        tmpfile.flush()
-        tmpfile.close()
+
+    suffix = ''.join(random.choice(string.ascii_uppercase
+                                   + string.ascii_lowercase
+                                   + string.digits)
+                     for _ in range(6))
+
+    tmpname = anonmapfile + '.mammutfsd.' + suffix
+
+    with open(tmpname, "w+") as tmpfile:
+        try:
+            for key, value in sorted(anonmap.items()):
+                line = value + ":" + key + "\n"
+                tmpfile.write(line)
+        finally:
+            tmpfile.flush()
     os.rename(tmpname, anonmapfile)
 
 

@@ -174,17 +174,21 @@ class AnonMap:
         """
         cnt = 0
 
-        tmpfile = self.mapfile + ".new"
-        tmpfile, tmpname = tempfile.mkstemp('anon.map.mammutfsd')
+        suffix = ''.join(random.choice(string.ascii_uppercase
+                                       + string.ascii_lowercase
+                                       + string.digits)
+                         for _ in range(6))
 
-        try:
-            for entry in self.mapping.values():
-                cnt += 1
-                line = self.create_storable_entry(entry)
-                tmpfile.write(line)
-        finally:
-            tmpfile.flush()
-            tmpfile.close()
+        tmpname = self.mapfile + '.mammutfsd.' + suffix
+
+        with open(tmpname, "w+") as tmpfile:
+            try:
+                for entry in self.mapping.values():
+                    cnt += 1
+                    line = self.create_storable_entry(entry)
+                    tmpfile.write(line)
+            finally:
+                tmpfile.flush()
         os.rename(tmpname, self.mapfile)
         print("updated anonmap {} with {} entries".format(self.mapfile, cnt))
 
