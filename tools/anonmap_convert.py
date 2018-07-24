@@ -25,10 +25,10 @@ def convert(infname, outfname):
                 for candidate in match.group(3).split(":"):
                     candidate = candidate.strip()
                     if os.path.isdir(candidate):
-                        newline = "{}:a_{}_{}\n".format(
-                            candidate,
+                        newline = "a_{}_{}:{}\n".format(
                             match.group(1),
-                            match.group(2))
+                            match.group(2),
+                            candidate)
                         converted += 1
                         outfile.write(newline)
                         success = True

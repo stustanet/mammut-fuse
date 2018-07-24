@@ -86,7 +86,7 @@ def read_anonmap(anonmapfile):
         with io.open(anonmapfile) as anonmapfd:
             for line in anonmapfd:
                 entry = line.split(':', 1)
-                anonmap[entry[1].strip()] = entry[0]
+                anonmap[entry[0].strip()] = entry[1].strip()
     except FileNotFoundError:
         print("Could not find anonmap file - assuming an empty one.")
     return anonmap
