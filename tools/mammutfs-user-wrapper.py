@@ -22,8 +22,8 @@ pwnam = pwd.getpwuid(uid)
 #CONFIG:
 mammutfs = "/usr/local/sbin/mammut-fuse/build/mammutfs"
 config_user = "/etc/mammutfs/user.conf"
-#home = "/srv/home/{}".format(pwnam.pw_name)
-home = "/tmp/{}".format(pwnam.pw_name)
+home = "/srv/home.fuse/{}".format(pwnam.pw_name)
+#home = "/tmp/{}".format(pwnam.pw_name)
 #END CONFIG
 
 if 'stop' == sys.argv[1]:
@@ -32,7 +32,7 @@ if 'stop' == sys.argv[1]:
     sys.exit(ret.returncode)
 
 elif 'start' == sys.argv[1]:
-    os.makedirs("/run/mammutfs_sockets", exist_ok=True)
+    os.makedirs(home, exist_ok=True)
     os.chown(home, pwnam.pw_uid, pwnam.pw_gid)
     os.chmod(home, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
