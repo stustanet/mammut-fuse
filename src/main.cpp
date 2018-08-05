@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
 
 	// Hit the road
 	// This will fork, and afterwards call setup_main
-	mammutfs::mammut_main(resolver, config);
+	return mammutfs::mammut_main(resolver, config);
 }
 
 void setup_main() {
