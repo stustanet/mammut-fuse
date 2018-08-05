@@ -10,7 +10,6 @@ cscope.out
 
 ### C ###
 # Prerequisites
-*.d
 
 # Object files
 *.o
