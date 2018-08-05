@@ -12,6 +12,11 @@ if len(sys.argv) < 3 or sys.argv[1] not in ['start', 'stop']:
     sys.exit(-1)
 
 uid = int(sys.argv[2])
+
+# Local users have ids < 90k - so we will not mammutfs for them!
+if uid < 90000:
+    sys.exit(0)
+
 pwnam = pwd.getpwuid(uid)
 
 #CONFIG:
