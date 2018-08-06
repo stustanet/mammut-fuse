@@ -236,7 +236,7 @@ void mammut_destroy(void *userdata) {
 
 #undef GETMODULE
 
-void mammut_main (std::shared_ptr<ModuleResolver> resolver,
+int mammut_main (std::shared_ptr<ModuleResolver> resolver,
                   std::shared_ptr<MammutConfig> config) {
 	openlog("mammutfs", LOG_PID, 0);
 
@@ -326,6 +326,7 @@ void mammut_main (std::shared_ptr<ModuleResolver> resolver,
 		syslog(LOG_ERR, ss.str().c_str());
 		std::cerr << ss.str();
 	}
+	return fuse_stat;
 }
 
 }

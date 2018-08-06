@@ -140,9 +140,12 @@ public:
 			filler(buf, "core", NULL, 0);
 			for (const auto  &entry : list) {
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
+
+					this->error("lister::readdir", "filler failed", path);
 					return -ENOMEM;
 				}
 			}
+			return 0;
 		} else {
 			return Module::readdir(path, buf, filler, offset, fi);
 		}
