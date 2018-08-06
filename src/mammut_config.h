@@ -122,7 +122,7 @@ public:
 				buf >> value;
 				this->log() << " [file] " << value << std::endl;
 			} else {
-				std::cout << " \033[044mCOULD NOT FIND CONFIG VALUE:\033[00m" << key << std::endl;
+				std::cout << "\033[044mCOULD NOT FIND CONFIG VALUE:\033[00m " << key << std::endl;
 				if (!ignore_error) {
 					exit(-1);
 				}
