@@ -4,11 +4,12 @@
 #include "mammut_config.h"
 
 #include "module/default.h"
-#include "module/private.h"
-#include "module/public.h"
 #include "module/anonymous.h"
+#include "module/authkeys.h"
 #include "module/backup.h"
 #include "module/lister.h"
+#include "module/private.h"
+#include "module/public.h"
 
 #include <sstream>
 #include <memory>
@@ -68,13 +69,15 @@ void setup_main() {
 	                         std::make_shared<mammutfs::Private>(config, communicator));
 	resolver->registerModule("public",
 	                         std::make_shared<mammutfs::Public>(config, communicator));
-	resolver->registerModule(
-		"anonym",
-		std::make_shared<mammutfs::Anonymous>(config,
-		                                      communicator,
-		                                      anon_lister->get_mapping()));
+	resolver->registerModule("authkeys",
+	                         std::make_shared<mammutfs::Authkeys>(config, communicator));
 	resolver->registerModule("backup",
 	                         std::make_shared<mammutfs::Backup>(config, communicator));
+	resolver->registerModule("anonym",
+	                         std::make_shared<mammutfs::Anonymous>(
+		                         config,
+		                         communicator,
+		                         anon_lister->get_mapping()));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
