@@ -26,7 +26,6 @@ def create_test_mapping():
         for module in MODULES:
             path = os.path.join(BASE, 'raids', raid, module, user)
             os.makedirs(path, mode=0o755, exist_ok=True)
-
             if module == 'anonym':
                 os.makedirs(os.path.join(path, "anon"), mode=0o755, exist_ok=True)
                 makefile(os.path.join(path, "anon", "testfile"))
@@ -41,5 +40,12 @@ def create_test_mapping():
             elif module in ['authkeys']:
                 makefile(os.path.join(path, 'authorized_keys'))
 
+def make_anonmap():
+    anonmap = os.path.join(BASE, 'fuse.anon.map')
+    subprocess.call(['./scan_public_list.py',
+                     '../mammutfs.cfg',
+                     anonmap, anonmap])
+
 if __name__ == "__main__":
     create_test_mapping()
+    make_anonmap()
