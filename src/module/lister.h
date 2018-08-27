@@ -34,7 +34,10 @@ public:
 				rescan();
 			});
 
-		rescan();
+		// Rescan on creation seems to trigger deadlocks during the `open`ing of
+		// the anonmap - so we should not do that, but scan on demand, whenever
+		// the first real access has happened.
+		// rescan();
 	}
 
 	/**
@@ -60,6 +63,12 @@ public:
 
 		size_t pos = path.find('/', 1);
 		std::string entry = path.substr(1, pos - 1);
+
+		// TODO: is this possible - we will aggressively scan the anonmap here
+		// if it was not yet opened.
+		if (this->list.empty()) {
+			this->rescan();
+		}
 
 		auto it = list.find(entry);
 		if (it != list.end()) {
@@ -123,6 +132,10 @@ public:
 			this->trace("lister::opendir", path);
 			return 0;
 		} else {
+			// Trigger a rescan of the anonmap on demand
+			if (this->list.empty()) {
+				this->rescan();
+			}
 			return Module::opendir(path, fi);
 		}
 	}
