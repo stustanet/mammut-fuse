@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 #include <limits.h>
 
@@ -140,6 +141,8 @@ bool Communicator::connect(bool initial_attempt) {
 }
 
 void Communicator::communication_thread() {
+	prctl(PR_SET_NAME, "communicator", 0, 0, 0);
+
 	int pollingfd = epoll_create(1);
 	if (pollingfd < 0) {
 		perror("epoll create");

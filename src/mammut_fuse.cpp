@@ -7,6 +7,8 @@
 #include <vector>
 #include <iostream>
 
+#include <sys/prctl.h>
+
 #include <syslog.h>
 #include <unistd.h>
 // Forward declare to create the main mount point
@@ -219,6 +221,7 @@ static int mammut_utimens(const char *path, const struct timespec tv[2]) {
 }
 
 void *mammut_init(struct fuse_conn_info *conn) {
+	prctl(PR_SET_NAME, "mammutfs_fuse", 0, 0, 0);
 	if (conn->capable & FUSE_CAP_EXPORT_SUPPORT) {
 		conn->want |= FUSE_CAP_EXPORT_SUPPORT;
 	} else {
@@ -238,6 +241,7 @@ void mammut_destroy(void *userdata) {
 
 int mammut_main (std::shared_ptr<ModuleResolver> resolver,
                   std::shared_ptr<MammutConfig> config) {
+	prctl(PR_SET_NAME, "mammutfs_main", 0, 0, 0);
 	openlog("mammutfs", LOG_PID, 0);
 
 	userdata.resolver = resolver;
