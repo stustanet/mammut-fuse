@@ -100,8 +100,11 @@ class MammutfsdClient:
                         await self.mfsd.write("fileop: " + str(data) + "\n")
                         # Dispatch plugin calls to another coroutine
                         await self._plugin_fileop_queue.put(data)
+                    elif 'event' in data and data['event'] == 'namechange':
+                        # Handle events
+                        await self.mfsd.name_change(data)
                     else:
-                        self.mfsd.log.warn("Unknown data received: " + str(data))
+                        self.mfsd.log.warning("Unknown data received: " + str(data))
             except json.JSONDecodeError:
                 self.mfsd.log.warn("Invalid data received: " + str(line))
 
@@ -320,6 +323,14 @@ class MammutfsDaemon:
         await self.call_plugin('on_client', client, {})
         await client.run()
 
+
+    async def name_change(self, data):
+        """
+        Handle events that come from the mammutfs that do not have the source
+        of public file listing related files, such as display name changes
+        """
+        if data['event'] == 'namechange' and "source" in data and "dest" in data:
+            await self.call_plugin('on_namechange', None, data)
 
     async def write(self, message):
         """

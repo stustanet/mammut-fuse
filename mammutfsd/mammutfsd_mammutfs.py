@@ -320,6 +320,12 @@ class MammutfsdBaseCommands:
 
             await self.command(['reload'], allow_targeting=False)
 
+    async def on_namechange(self, source, dest, **kwargs):
+        """ The user config of a user has changed, so reload it """
+        # TODO: check which username has changed to which value
+        self.anon_map.reload()
+
+
     async def teardown(self):
         """
         None required

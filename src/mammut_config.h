@@ -7,7 +7,7 @@
 #include <sys/types.h>
 
 #include <list>
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <string>
 #include <sstream>
@@ -131,12 +131,14 @@ public:
 		}
 	}
 
+	std::unordered_map<std::string, std::string> userconfig;
+
 	// todo database shit
 private:
 	mutable std::istringstream buf;
-	std::map<std::string, std::string> manvalues;
-	std::map<std::string, std::string> cmdline;
-	std::map<std::string, std::list<changeable_callback>> changeables;
+	std::unordered_map<std::string, std::string> manvalues;
+	std::unordered_map<std::string, std::string> cmdline;
+	std::unordered_map<std::string, std::list<changeable_callback>> changeables;
 	std::shared_ptr<libconfig::Config> config;
 
 	void update_anonuser();

@@ -10,6 +10,7 @@
 #include "module/lister.h"
 #include "module/private.h"
 #include "module/public.h"
+#include "module/usercontrol.h"
 
 #include <sstream>
 #include <memory>
@@ -65,23 +66,24 @@ void setup_main() {
 	resolver->registerModule("default",
 	                         std::make_shared<mammutfs::Default>(config, communicator));
 	resolver->registerModule("lister", anon_lister);
-	resolver->registerModule("private",
-	                         std::make_shared<mammutfs::Private>(config, communicator));
-	resolver->registerModule("public",
-	                         std::make_shared<mammutfs::Public>(config, communicator));
-	resolver->registerModule("authkeys",
-	                         std::make_shared<mammutfs::Authkeys>(config, communicator));
-	resolver->registerModule("backup",
-	                         std::make_shared<mammutfs::Backup>(config, communicator));
 	resolver->registerModule("anonym",
 	                         std::make_shared<mammutfs::Anonymous>(
 		                         config,
 		                         communicator,
 		                         anon_lister->get_mapping()));
+	resolver->registerModule("private",
+	                         std::make_shared<mammutfs::Private>(config, communicator));
+	resolver->registerModule("public",
+	                         std::make_shared<mammutfs::Public>(config, communicator));
+	resolver->registerModule("authorized_keys",
+	                         std::make_shared<mammutfs::Authkeys>(config, communicator));
+	resolver->registerModule("backup",
+	                         std::make_shared<mammutfs::Backup>(config, communicator));
+	resolver->registerModule("control",
+	                         std::make_shared<mammutfs::UserControl>(config, communicator));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
-
 
 	std::stringstream ss;
 	ss << "New Mammutfs for user " << config->username()
