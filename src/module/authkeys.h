@@ -1,8 +1,10 @@
 #pragma once
 
 #include "../module.h"
-
 #include "../mammut_config.h"
+
+#include <errno.h>
+#include <sys/stat.h>
 
 namespace mammutfs {
 
@@ -11,31 +13,29 @@ public:
 	Authkeys(const std::shared_ptr<MammutConfig> &config,
 	         const std::shared_ptr<Communicator> &comm) :
 		Module("authkeys", config, comm) {
-		// Check if `<RAID>/authkeys/<uid>/authorized_keys` exist
-
-		int retstat = 0;
-		std::string translated;
-		if ((retstat = translatepath("authorized_keys", translated)) != 0) {
-			this->error("Authkeys::<ctor>",
-			            "Could not translate authorized keys",
-			            "authorized_keys");
-			return;
-		}
-		int fd = ::open(translated.c_str(), O_PATH | O_CREAT, 0600);
-		::close(fd);
 	}
 
 	int translatepath(const std::string &path, std::string &out) override {
-		// todo test
-		if (path == "authorized_keys" || path == "/authorized_keys" ||  path == "/") {
+		this->check_create();
+		if (path == "/authorized_keys" || path == "/") {
 			return Module::translatepath(path, out);
 		} else {
 			return -ENOENT;
 		}
 	}
 
-	// getattr is also protected by translatepath
+	void check_create() {
+		std::string out;
+		struct stat statbuf;
+		if (Module::translatepath("/authorized_keys", out) == 0
+		    && ::stat(out.c_str(), &statbuf) == -1
+		    &&  errno == ENOENT ) {
+			int fd = ::open(out.c_str(), O_CREAT, S_IRUSR | S_IWUSR);
+			::close(fd);
+		}
+	}
 
+	// getattr is also protected by translatepath
 	int readlink(const char */*path*/, char */*link*/, size_t /*size*/) override {
 		return -ENOTSUP;
 	}
@@ -81,8 +81,14 @@ public:
 
 	// opendir, releasedir, readdir is also tolerable
 
-	int create(const char */*path*/, mode_t /*mode*/, struct fuse_file_info */*fi*/) override {
-		return -EPERM;
+	int create(const char *path, mode_t mode, struct fuse_file_info *fi) override {
+		if (strcmp(path, "/authorized_keys") == 0) {
+			this->check_create();
+			return 0;
+			//return Module::create(path, mode, fi);
+		} else {
+			return -EPERM;
+		}
 	}
 };
 
