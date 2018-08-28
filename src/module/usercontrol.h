@@ -17,9 +17,13 @@ public:
 	             const std::shared_ptr<Communicator> &comm) :
 		FileModule("control", config, comm) {
 
-		// TODO: make sure that it will not block during startup, as was done
-		// in the ugly 2018-08-27 bug
-		this->changed();
+		this->config->init_userconfig = [this]()
+		{
+			if (this->config->userconfig.size() != 0) return;
+			// TODO: make sure that it will not block during startup, as was done
+			// in the ugly 2018-08-27 bug
+			this->changed();
+		};
 	}
 
 	void make_default() override {
@@ -44,8 +48,6 @@ public:
 	}
 
 	void changed() override {
-
-		// TODO do some kind of error reporting into the configfile
 		std::string out;
 		this->translatepath("/", out);
 
@@ -90,9 +92,7 @@ public:
 		}
 		file.close();
 
-
-
-		// Displayname was not configured - 
+		// Displayname was not configured
 		if (userconfig.find("displayname") == userconfig.end()) {
 			errorfile << "# WARNING: displayname was unconfigured." << std::endl;
 			errorfile << "displayname=" << this->config->username();
