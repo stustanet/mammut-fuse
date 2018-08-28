@@ -57,10 +57,6 @@ public:
 			return -ENOTSUP;
 		}
 
-		if (list.empty()) {
-			rescan();
-		}
-
 		size_t pos = path.find('/', 1);
 		std::string entry = path.substr(1, pos - 1);
 
@@ -69,7 +65,6 @@ public:
 		if (this->list.empty()) {
 			this->rescan();
 		}
-
 		auto it = list.find(entry);
 		if (it != list.end()) {
 			if (pos == std::string::npos) {
@@ -107,7 +102,8 @@ public:
 
 		int retstat = Module::getattr(path, statbuf);
 		// Eliminate all User-IDs from the items
-		// TODO: Maybe we want to keep UIDs for public listing, this way we will eliminate all of them
+		// TODO: Maybe we want to keep UIDs for public listing, this way we will
+		// eliminate all of them
 		statbuf->st_uid = config->anon_uid;
 		statbuf->st_gid = config->anon_gid;
 		return retstat;
@@ -132,10 +128,6 @@ public:
 			this->trace("lister::opendir", path);
 			return 0;
 		} else {
-			// Trigger a rescan of the anonmap on demand
-			if (this->list.empty()) {
-				this->rescan();
-			}
 			return Module::opendir(path, fi);
 		}
 	}
@@ -147,10 +139,15 @@ public:
 	                   struct fuse_file_info *fi) override {
 		//todo load shared listing
 		if (strcmp(path, "/") == 0) {
+			if (this->list.empty()) {
+				this->rescan();
+			}
+
 			this->trace("lister::readdir", path);
 			filler(buf, ".", NULL, 0);
 			filler(buf, "..", NULL, 0);
 			filler(buf, "core", NULL, 0);
+
 			for (const auto  &entry : list) {
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
 
