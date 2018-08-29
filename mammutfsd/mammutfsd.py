@@ -70,9 +70,9 @@ class MammutfsdClient:
                                        self.details['user'])
                     break
                 else:
-                    self.mfsd.log.warning("Invalid client hello received ", line)
+                    self.mfsd.log.warning("Invalid client hello received: %s", line)
             except json.JSONDecodeError:
-                self.mfsd.log.warn("Hello: invalid data received: " + str(line))
+                self.mfsd.log.warning("Hello: invalid data received: " + str(line))
 
         # Working loop
         while True:
