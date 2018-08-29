@@ -279,15 +279,16 @@ DIR *Module::open_file_handle_t::dp() {
 	return this->file->fh.dp;
 }
 
-Module::open_file_handle_t Module::file(const std::string &path) {
+Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info *fi) {
 	// Check if there is already an open file.
 	// If not, create a open file structure, but do not assign any sane values
 	// to it, it is not possible to do that cleanly at this point.
 	// Finally, create a open_file_handle_t for this file.
 	// Use the number of open files as reference for the should_close flag;
 
+
 	open_file_t *file;
-	auto it = open_files.find(path);
+	auto it = open_files.find(fi->fh);
 	if (it != open_files.end()) {
 		file = &it->second;
 	} else {
@@ -298,7 +299,10 @@ Module::open_file_handle_t Module::file(const std::string &path) {
 		f.type = open_file_t::UNSPEC;
 		f.flags = 0;
 		f.fh.fd = -1;
-		file = &open_files.insert(std::make_pair(path, f)).first->second;
+
+		int64_t fileid = this->open_file_count++;
+		fi->fh = fileid;
+		file = &open_files.insert(std::make_pair(fileid, f)).first->second;
 	}
 
 	bool should_close = open_files.size() > max_native_fds;
@@ -306,17 +310,16 @@ Module::open_file_handle_t Module::file(const std::string &path) {
 	return open_file_handle_t(file, should_close);
 }
 
-
-void Module::close_file(const std::string &path) {
+void Module::close_file(const std::string &/*path*/, fuse_file_info *fi) {
 	// Test if the file was open, if so - remove it and close it.
-	auto it = open_files.find(path);
+	auto it = open_files.find(fi->fh);
 	if (it != open_files.end()) {
 		open_files.erase(it);
 	}
 }
 
-void Module::close_file(const char *path) {
-	close_file(std::string(path));
+void Module::close_file(const char *path, fuse_file_info *fi) {
+	close_file(std::string(path), fi);
 }
 
 
@@ -449,7 +452,6 @@ int Module::unlink(const char *path) {
 		this->warn("unlink", "unlink", translated);
 	}
 
-	this->close_file(translated);
 	return retstat;
 }
 
@@ -469,7 +471,6 @@ int Module::rmdir(const char *path) {
 		this->warn("rmdir", "rmdir", translated);
 	}
 
-	this->close_file(translated);
 	return retstat;
 }
 
@@ -482,7 +483,7 @@ int Module::symlink(const char *path, const char *) {
 
 int Module::rename(const char *sourcepath,
                    const char *newpath,
-                   const char *sourcepath_raw,
+                   const char */*sourcepath_raw*/,
                    const char */*newpath_raw*/) {
 	this->trace("rename", sourcepath, newpath);
 
@@ -497,14 +498,9 @@ int Module::rename(const char *sourcepath,
 		retstat = -errno;
 		this->warn("rename", "rename", sourcepath, to_translated);
 	} else {
-		// move a possible open file within the file hierarchy.
-		auto it = open_files.find(sourcepath_raw);
-		if (it != open_files.end()) {
-			auto cpy = it->second;
-			cpy.path = to_translated;
-			open_files.erase(it); // might invalidate iterators
-			open_files[to_translated] = cpy;
-		}
+		// Open files do not need to be modified, because of filesystem magic
+		// that linux provides - a file is not re-identified by its name but
+		// by its filedescriptor (like it has to be)
 	}
 
 	return retstat;
@@ -564,7 +560,7 @@ int Module::truncate(const char *path, off_t newsize) {
 		retstat = -errno;
 		this->warn("truncate", "truncate", translated);
 	} else {
-		this->file(translated).file->has_changed = true;
+		// We cannot link to an open file.
 	}
 
 	return retstat;
@@ -587,7 +583,7 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 		retstat = -errno;
 		this->warn("open", "open", translated);
 	} else {
-		auto f = this->file(translated);
+		auto f = this->file(translated, fi);
 		f.file->type = open_file_t::FILE;
 		f.file->fh.fd = fd;
 		f.file->is_open = true;
@@ -600,7 +596,7 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 
 
 int Module::read(const char *path, char *buf, size_t size, off_t offset,
-                 struct fuse_file_info */*fi*/) {
+                 struct fuse_file_info *fi) {
 	this->trace("read", path);
 
 	int retstat = 0;
@@ -609,7 +605,7 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 		this->info("read", "translatepath failed", path);
 		return retstat;
 	}
-	auto f = this->file(translated);
+	auto f = this->file(translated, fi);
 
 	retstat = ::pread(f.fd(), buf, size, offset);
 	if (retstat < 0) {
@@ -622,7 +618,7 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 
 
 int Module::write(const char *path, const char *buf, size_t size, off_t offset,
-                  struct fuse_file_info */*fi*/) {
+                  struct fuse_file_info *fi) {
 	this->trace("write", path);
 
 	//dump_open_files(std::cout << "open files: ");
@@ -634,7 +630,7 @@ int Module::write(const char *path, const char *buf, size_t size, off_t offset,
 		this->info("write", "translatepath failed", path);
 		return retstat;
 	}
-	auto f = this->file(translated);
+	auto f = this->file(translated, fi);
 	int fd = f.fd();
 	retstat = ::pwrite(fd, buf, size, offset);
 	if (retstat < 0) {
@@ -676,7 +672,7 @@ int Module::flush(const char *path, struct fuse_file_info *) {
 }
 
 
-int Module::release(const char *path, struct fuse_file_info */*fi*/) {
+int Module::release(const char *path, struct fuse_file_info *fi) {
 	this->trace("release", path);
 
 	int retstat = 0;
@@ -686,20 +682,20 @@ int Module::release(const char *path, struct fuse_file_info */*fi*/) {
 		return retstat;
 	}
 
-	auto f = this->file(translated);
+	auto f = this->file(translated, fi);
 	if (f.file->is_open) {
 		retstat = close(f.fd());
 		f.file->is_open = false;
 		f.file->fh.fd = -1;
 	}
 
-	open_files.erase(path);
+	this->close_file(path, fi);
 
 	return retstat;
 }
 
 
-int Module::fsync(const char *path, int, struct fuse_file_info */*fi*/) {
+int Module::fsync(const char *path, int, struct fuse_file_info *fi) {
 	this->trace("fsync", path);
 
 	int retstat = 0;
@@ -711,7 +707,7 @@ int Module::fsync(const char *path, int, struct fuse_file_info */*fi*/) {
 		return retstat;
 	}
 
-	auto f = this->file(translated);
+	auto f = this->file(translated, fi);
 	retstat = ::fsync(f.fd());
 	if (retstat < 0) {
 		errno = -retstat;
@@ -746,7 +742,7 @@ int Module::removexattr(const char *path, const char *) {
 }
 
 
-int Module::opendir(const char *path, struct fuse_file_info */*fi*/) {
+int Module::opendir(const char *path, struct fuse_file_info *fi) {
 	this->trace("opendir", path);
 
 	int retstat = 0;
@@ -762,7 +758,7 @@ int Module::opendir(const char *path, struct fuse_file_info */*fi*/) {
 		this->warn("opendir", "opendir", translated);
 		return retstat;
 	} else {
-		auto f = this->file(translated);
+		auto f = this->file(translated, fi);
 		f.file->type = open_file_t::DIRECTORY;
 		f.file->fh.dp = dp;
 		f.file->is_open = true;
@@ -774,7 +770,7 @@ int Module::opendir(const char *path, struct fuse_file_info */*fi*/) {
 
 
 int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                    off_t offset, struct fuse_file_info */*fi*/) {
+                    off_t offset, struct fuse_file_info *fi) {
 	this->trace("readdir", path);
 	(void)offset;
 
@@ -784,7 +780,7 @@ int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		this->info("readdir", "translatepath failed", path);
 		return retstat;
 	}
-	auto f = this->file(translated);
+	auto f = this->file(translated, fi);
 	DIR *dp = f.dp();
 
 	if (dp == 0) {
@@ -804,7 +800,7 @@ int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 
-int Module::releasedir(const char *path, struct fuse_file_info */*fi*/) {
+int Module::releasedir(const char *path, struct fuse_file_info *fi) {
 	this->trace("releasedir", path);
 
 	int retstat = 0;
@@ -813,12 +809,13 @@ int Module::releasedir(const char *path, struct fuse_file_info */*fi*/) {
 		this->info("releasedir", "translatepath failed", path);
 		return retstat;
 	}
-	auto f = this->file(translated);
+	auto f = this->file(translated, fi);
 	if (f.file->is_open && f.file->type == open_file_t::DIRECTORY) {
 		retstat = ::closedir(f.dp());
 		f.file->is_open = false;
 	}
-	open_files.erase(path);
+
+	this->close_file(path, fi);
 
 	return retstat;
 }
@@ -844,7 +841,7 @@ int Module::access(const char *path, int mask) {
 }
 
 
-int Module::create(const char *path, mode_t mode, struct fuse_file_info */*fi*/) {
+int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	this->trace("create", path);
 
 	int retstat = 0;
@@ -861,7 +858,7 @@ int Module::create(const char *path, mode_t mode, struct fuse_file_info */*fi*/)
 	} else {
 		// We do not like open files!
 //		::close(fd);
-		auto f = this->file(translated);
+		auto f = this->file(translated, fi);
 		f.file->type = open_file_t::FILE;
 		f.file->flags = O_APPEND | O_RDWR;
 		f.file->fh.fd = fd;

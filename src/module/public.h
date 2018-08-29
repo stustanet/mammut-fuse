@@ -74,7 +74,7 @@ public:
 			return retstat;
 		}
 		bool changed = false;
-		if (this->file(translated).changed()) {
+		if (this->file(translated, fi).changed()) {
 			changed = true;
 		}
 

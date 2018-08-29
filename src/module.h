@@ -397,12 +397,15 @@ protected:
 private:
 	// The list of open files - and our internal file descriptors.
 	// It is not supported generally to use 64 bit fds.
-	std::unordered_map<std::string, open_file_t> open_files;
+	std::unordered_map<int64_t, open_file_t> open_files;
+
+	// File ids are handed out incrementingly, and this is the counter
+	int64_t open_file_count = 1;
 
 	// The maximum number of files that are to be represented natively.
 	// If the size of open_files reaches the limit, newly allocated files
 	// are stored temporarily
-	size_t max_native_fds; 
+	size_t max_native_fds;
 
 protected:
 	class open_file_handle_t {
@@ -428,10 +431,10 @@ protected:
 	 * beforehand.
 	 * This has to be used whenever a file handle is required.
 	 */
-	open_file_handle_t file(const std::string &);
+	open_file_handle_t file(const std::string &, fuse_file_info *fi);
 
-	void close_file(const char *path); // TODO: This has to be called in rename
-	void close_file(const std::string &path);
+	void close_file(const char *path, fuse_file_info *fi); // TODO: This has to be called in rename
+	void close_file(const std::string &path, fuse_file_info *fi);
 
 	void dump_open_files(std::ostream &);
 };
