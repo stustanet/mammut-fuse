@@ -5,7 +5,7 @@ project (mammutfs)
 set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 message (${CMAKE_MODULE_PATH})
 
-set(SAVE_FILE_HANDLES NO CACHE BOOL
+set(SAVE_FILE_HANDLES YES CACHE BOOL
 	"limit the amount of file handles used, might cause problems with NFS")
 set(ENABLE_TRACELOG YES CACHE BOOL
 	"Enable verbose trace logging of every syscall")

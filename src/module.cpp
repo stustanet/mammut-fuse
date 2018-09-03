@@ -231,10 +231,10 @@ Module::open_file_handle_t::~open_file_handle_t() {
 		if (this->should_close && this->file->is_open) {
 			switch(this->file->type) {
 			case open_file_t::FILE:
-				close(this->file->fh.fd);
+				::close(this->file->fh.fd);
 				break;
 			case open_file_t::DIRECTORY:
-				closedir(this->file->fh.dp);
+				::closedir(this->file->fh.dp);
 				break;
 			default:
 				break;
@@ -257,7 +257,7 @@ int Module::open_file_handle_t::fd() {
 		int flags = (this->file->flags & (O_RDONLY | O_WRONLY | O_RDWR)) | O_NOFOLLOW | O_APPEND;
 		this->file->fh.fd = ::open(this->file->path.c_str(), flags);
 		if (this->file->fh.fd < 0) {
-			std::cout << "ERROR opening file " << strerror(errno) << std::endl;
+			std::cout << "ERROR opening file: " << strerror(errno) << std::endl;
 		}
 		this->file->is_open = true;
 	}
@@ -273,7 +273,7 @@ DIR *Module::open_file_handle_t::dp() {
 #ifdef SAVE_FILE_HANDLES
 	if (!this->file->is_open) {
 		this->file->fh.dp = ::opendir(this->file->path.c_str());
-		this->file->i/s_open = true;
+		this->file->is_open = true;
 	}
 #endif
 	return this->file->fh.dp;
@@ -312,11 +312,12 @@ Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info 
 }
 
 void Module::close_file(const std::string &/*path*/, fuse_file_info *fi) {
-	// Test if the file was open, if so - remove it and close it.
+	// Test if the file was open, if so - remove it and thereby close it.
 	const auto &lock = std::lock_guard<std::mutex>(this->open_file_mux);
 
 	auto it = open_files.find(fi->fh);
 	if (it != open_files.end()) {
+		// We do not need to call close, will be done in destructor
 		open_files.erase(it);
 	}
 }
@@ -717,6 +718,8 @@ int Module::fsync(const char *path, int, struct fuse_file_info *fi) {
 		errno = -retstat;
 		this->warn("fsync", "fsync", translated);
 	}
+#else
+	(void)fi;
 #endif
 	return retstat;
 }
@@ -858,15 +861,15 @@ int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	int fd = ::creat(translated.c_str(), mode);
 	if (fd < 0) {
 		retstat = -errno;
-		this->warn("create", "creat", translated);
+		this->warn("create", strerror(errno), translated);
 	} else {
 		// We do not like open files!
-//		::close(fd);
+		//::close(fd);
 		auto f = this->file(translated, fi);
 		f.file->type = open_file_t::FILE;
 		f.file->flags = O_APPEND | O_RDWR;
 		f.file->fh.fd = fd;
-		f.file->is_open = false;
+		f.file->is_open = true;
 		f.file->has_changed = true;
 	}
 
