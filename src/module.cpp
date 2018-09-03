@@ -285,7 +285,7 @@ Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info 
 	// to it, it is not possible to do that cleanly at this point.
 	// Finally, create a open_file_handle_t for this file.
 	// Use the number of open files as reference for the should_close flag;
-
+	const auto &lock = std::lock_guard<std::mutex>(this->open_file_mux);
 
 	open_file_t *file;
 	auto it = open_files.find(fi->fh);
@@ -302,7 +302,8 @@ Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info 
 
 		int64_t fileid = this->open_file_count++;
 		fi->fh = fileid;
-		file = &open_files.insert(std::make_pair(fileid, f)).first->second;
+
+		file = &open_files.emplace(std::make_pair(fileid, f)).first->second;
 	}
 
 	bool should_close = open_files.size() > max_native_fds;
@@ -312,6 +313,8 @@ Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info 
 
 void Module::close_file(const std::string &/*path*/, fuse_file_info *fi) {
 	// Test if the file was open, if so - remove it and close it.
+	const auto &lock = std::lock_guard<std::mutex>(this->open_file_mux);
+
 	auto it = open_files.find(fi->fh);
 	if (it != open_files.end()) {
 		open_files.erase(it);
@@ -324,6 +327,7 @@ void Module::close_file(const char *path, fuse_file_info *fi) {
 
 
 void Module::dump_open_files(std::ostream &s) {
+	const auto& lock = std::lock_guard<std::mutex>(this->open_file_mux);
 	for (const auto &t : open_files) {
 		s << "{\"key\":\"" << t.first << "\","
 		  << "\"name\":\"" << t.second.path << "\","

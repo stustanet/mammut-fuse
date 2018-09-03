@@ -3,8 +3,10 @@
 #include "mammut_config.h"
 #include "config.h"
 
-#include <unordered_map>
+#include <atomic>
 #include <map>
+#include <mutex>
+#include <unordered_map>
 
 #include <fuse.h>
 
@@ -384,7 +386,7 @@ protected:
 	 * Represents an open file.
 	 */
 	struct open_file_t {
-		std::string path; // lives in the maps key.
+		std::string path;
 		bool is_open;
 		bool has_changed;
 		enum { FILE, DIRECTORY, UNSPEC } type;
@@ -398,6 +400,9 @@ private:
 	// The list of open files - and our internal file descriptors.
 	// It is not supported generally to use 64 bit fds.
 	std::unordered_map<int64_t, open_file_t> open_files;
+
+	// Has to be locked whenever open_files is accessed
+	std::mutex open_file_mux;
 
 	// File ids are handed out incrementingly, and this is the counter
 	int64_t open_file_count = 1;
@@ -433,7 +438,8 @@ protected:
 	 */
 	open_file_handle_t file(const std::string &, fuse_file_info *fi);
 
-	void close_file(const char *path, fuse_file_info *fi); // TODO: This has to be called in rename
+	// TODO: This has to be called in rename
+	void close_file(const char *path, fuse_file_info *fi);
 	void close_file(const std::string &path, fuse_file_info *fi);
 
 	void dump_open_files(std::ostream &);
