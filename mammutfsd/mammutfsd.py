@@ -355,7 +355,8 @@ class MammutfsDaemon:
             await self.write("Your connection has been overwritten. "
                              "You will not receive any more data\n")
 
-        print("mammutfsd: interaction client connect")
+        # printing here may lead to death - so dont do it!
+        #print("mammutfsd: interaction client connect")
         self.reader = reader
         self.writer = writer
         self.connect_event.set()
