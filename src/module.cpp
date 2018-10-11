@@ -89,13 +89,13 @@ int Module::find_raid(std::string &path) {
 	for (const auto &raid : config->raids) {
 		std::string to_test = raid + "/" + modname + "/" + config->username();
 
-		this->log(LOG_LEVEL::INFO, std::string("Testing raid " + to_test));
+		//this->log(LOG_LEVEL::INFO, std::string("Testing raid " + to_test));
 		struct stat statbuf;
 		memset(&statbuf, 0, sizeof(statbuf));
 		int retval = ::stat(to_test.c_str(), &statbuf);
 
 		if (retval == 0) {
-			this->log(LOG_LEVEL::INFO, std::string("Found raid at " + to_test));
+			//this->log(LOG_LEVEL::INFO, std::string("Found raid at " + to_test));
 			basepath = to_test;
 			break;
 		}
