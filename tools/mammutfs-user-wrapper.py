@@ -5,7 +5,7 @@ import pwd
 import stat
 import subprocess
 import sys
-
+from threading import Event
 
 if len(sys.argv) < 3 or sys.argv[1] not in ['start', 'stop']:
     print("Usage: %s [start|stop] UID"% sys.argv[0])
@@ -15,8 +15,17 @@ uid = int(sys.argv[2])
 
 # Local users have ids < 90k - so we will not mammutfs for them!
 if uid < 90000:
-    sys.exit(0)
-
+    # but this is started as systemd.service:TYPE=forking
+    # so we fork into a process that does nothing except wait for its
+    # death
+    if os.fork() == 0:
+        # this creates a new void event, that is never triggered until
+        # the process dies -> daemon runs, systemd is happy
+        Event().wait()
+        sys.exit(0)
+    else:
+        # The main process exists so systemd can continue
+        sys.exit(0)
 pwnam = pwd.getpwuid(uid)
 
 #CONFIG:
@@ -28,11 +37,18 @@ home = "/srv/home.fuse/{}".format(pwnam.pw_name)
 
 if 'stop' == sys.argv[1]:
     # fusermount -u home
-    ret = subprocess.run(['fusermount', '-u', home])
-    sys.exit(ret.returncode)
+    #ret = subprocess.run(['fusermount', '-u', home])
+    #sys.exit(ret.returncode)
+    # systemd keeps care of cleaning up all mounted fsses
+    sys.exit(0)
 
 elif 'start' == sys.argv[1]:
-    os.makedirs(home, exist_ok=True)
+    try:
+        os.makedirs(home, exist_ok=True)
+    except FileExistsError:
+        # If the full directory path already existed, this exception is thrown
+        pass
+
     os.chown(home, pwnam.pw_uid, pwnam.pw_gid)
     os.chmod(home, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 

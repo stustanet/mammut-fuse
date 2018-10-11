@@ -10,5 +10,5 @@ ExecStop=/usr/local/sbin/mammut-fuse/tools/mammutfs-user-wrapper.py stop %i
 Restart=always
 
 [Install]
-WantedBy=user@%i.service
+RequiredBy=user@%i.service
 

@@ -1,5 +1,6 @@
 [Unit]
 Description=Mammutfs public lister
+Wants=raidmounts.target
 After=raidmounts.target
 
 [Service]
