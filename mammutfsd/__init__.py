@@ -1,1 +1,1 @@
-import mammutfsd
+from . import mammutfsd
