@@ -11,6 +11,8 @@
 #include "module/private.h"
 #include "module/public.h"
 #include "module/usercontrol.h"
+#include "module/fullbackuplist.h"
+
 
 #include <sstream>
 #include <memory>
@@ -81,6 +83,8 @@ void setup_main() {
 	                         std::make_shared<mammutfs::Backup>(config, communicator));
 	resolver->registerModule("control",
 	                         std::make_shared<mammutfs::UserControl>(config, communicator));
+	resolver->registerModule("tsm-backup-list",
+	                         std::make_shared<mammutfs::FullBackupList>(config, communicator));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
