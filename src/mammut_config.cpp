@@ -25,6 +25,9 @@ MammutConfig::MammutConfig(const char *filename,
 		std::cerr << "Config not found: " << filename << ": " << e.what()
 			<< std::endl;
 		exit(-1);
+	} catch (libconfig::ParseException &e) {
+		std::cerr << "config error: " << e.getError() << std::endl;
+		exit(-1);
 	}
 
 	enum STATE {
@@ -79,7 +82,28 @@ MammutConfig::MammutConfig(const char *filename,
 }
 
 void MammutConfig::filterModules(std::shared_ptr<ModuleResolver> mods) {
-	const auto& modulelist = this->config->lookup("modules");
+	std::list<std::string> modulelist;
+
+	std::string modulestr;
+	if (this->lookupValue("modules", modulestr, true)) {
+		size_t endofword = 0;
+		size_t startofword = 0;
+		                     //split at ",;"
+		while (endofword != std::string::npos) {
+			endofword = modulestr.find_first_of(",;", startofword);
+			std::string token = modulestr.substr(startofword, endofword);
+			startofword = endofword + 1;
+			modulelist.push_back(token);
+		}
+	} else {
+		std::cout << "Using list from configfile" << std::endl;
+		// if the modules are stored in the config as a list
+		const auto& configlist = this->config->lookup("modules");
+		for (auto it = configlist.begin(); it != configlist.end(); ++it) {
+			modulelist.push_back(*it);
+		}
+	}
+
 	std::stringstream ss;
 	ss << "Activating modules: ";
 	for (auto it = modulelist.begin(); it != modulelist.end(); ++it) {
