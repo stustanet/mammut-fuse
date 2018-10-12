@@ -1,0 +1,16 @@
+
+[Unit]
+Description=Mammutfs backup lister
+Wants=raidmounts.target
+After=raidmounts.target
+
+[Service]
+Type=forking
+# Changeme
+User=nobody
+WorkingDirectory=/usr/local/sbin/mammut-fuse
+ExecStart=/usr/local/sbin/mammut-fuse/tools/mammutfs-backup-wrapper.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

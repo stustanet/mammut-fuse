@@ -16,16 +16,16 @@ uid = int(sys.argv[2])
 # Local users have ids < 90k - so we will not mammutfs for them!
 if uid < 90000:
     # but this is started as systemd.service:TYPE=forking
-    # so we fork into a process that does nothing except wait for its
-    # death
+    # so we fork into a process that does nothing except wait for its death
     if os.fork() == 0:
-        # this creates a new void event, that is never triggered until
-        # the process dies -> daemon runs, systemd is happy
+        # this creates a new void event, that is never triggered until the
+        # process dies -> daemon runs, systemd is happy
         Event().wait()
         sys.exit(0)
     else:
         # The main process exists so systemd can continue
         sys.exit(0)
+
 pwnam = pwd.getpwuid(uid)
 
 #CONFIG:
