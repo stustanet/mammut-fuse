@@ -91,7 +91,5 @@ private:
 	std::unordered_map<std::string, command> commands;
 
 	SafeQueue<std::string> queue;
-
-	std::stringstream sstrbuf;
 };
 }

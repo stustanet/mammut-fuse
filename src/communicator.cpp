@@ -129,11 +129,14 @@ bool Communicator::connect(bool initial_attempt) {
 		return false;
 	}
 
+	std::stringstream sstrbuf;
 	// Send our hello!
-	sstrbuf.str("");
-	sstrbuf.clear();
-	sstrbuf << "{\"op\":\"hello\",\"user\":\"" << this->config->username() << "\","
-	        << "\"mountpoint\":\"" << this->config->mountpoint() << "\"}\n";
+	std::string mountpoint = this->config->mountpoint();
+	std::string username = this->config->username();
+
+	std::cout << "mountpoint" << this->config->mountpoint();
+	sstrbuf << "{\"op\":\"hello\",\"user\":\"" << username << "\","
+	        << "\"mountpoint\":\"" << mountpoint << "\"}\n";
 	send_command(sstrbuf.str());
 
 	this->connected = true;
@@ -211,7 +214,7 @@ void Communicator::communication_thread() {
 					}
 
 					std::string data;
-					if (!this->queue.dequeue(&data, false)) {
+					if (!this->queue.dequeue(data, false)) {
 						// We could not retrieve a value - this should never occure, we
 						// check nevertheless
 						continue;
@@ -270,8 +273,7 @@ void Communicator::inotify(const std::string &operation,
                            const std::string &module,
                            const std::string &path,
                            const std::string &path2) {
-	sstrbuf.str("");
-	sstrbuf.clear();
+	std::stringstream sstrbuf;
 	sstrbuf << "{\"op\":\"" << operation << "\","
 	        << "\"module\":\"" << module << "\","
 	        << "\"path\":\"" << path << "\"";
@@ -312,8 +314,7 @@ void Communicator::execute_command(std::string cmd) {
 	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 	auto it = commands.find(cmd);
 	if (it != commands.end()) {
-		sstrbuf.str("");
-		sstrbuf.clear();
+		std::stringstream sstrbuf;
 		std::string response;
 		if (it->second.callback(data, response)) {
 			if (response.empty()) response = "\"\"";
@@ -330,7 +331,7 @@ void Communicator::execute_command(std::string cmd) {
 		}
 	} else {
 		std::cout << "Command not registered: '" << cmd << "'" << std::endl;
-		send("{\"state\":\"error\",\"error\":\"unknown command\"}");
+		this->send("{\"state\":\"error\",\"error\":\"unknown command\"}");
 	}
 }
 

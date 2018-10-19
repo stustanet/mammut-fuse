@@ -6,13 +6,14 @@
 
 #include <sys/types.h>
 
-#include <list>
-#include <unordered_map>
-#include <memory>
-#include <string>
-#include <sstream>
-#include <iostream>
 #include <functional>
+#include <iostream>
+#include <list>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 
 namespace libconfig {
 class Config;
@@ -82,7 +83,7 @@ public:
 	#ifndef ENABLE_CONFIG_DEBUG
 	mutable std::stringstream voidstream;
 	#endif
-	std::iostream &log() const {
+	std::ostream &log() const {
 		#ifdef ENABLE_CONFIG_DEBUG
 		return std::cout;
 		#else
@@ -114,6 +115,7 @@ public:
 			}
 		}
 		{
+			std::lock_guard<std::mutex> lock(libconfigaccess);
 			const char *tmp;
 			bool state = config->lookupValue(key, tmp);
 			if (state) {
@@ -138,7 +140,9 @@ public:
 
 	// todo database shit
 private:
+	mutable std::mutex libconfigaccess;
 	mutable std::istringstream buf;
+
 	std::unordered_map<std::string, std::string> manvalues;
 	std::unordered_map<std::string, std::string> cmdline;
 	std::unordered_map<std::string, std::list<changeable_callback>> changeables;

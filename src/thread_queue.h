@@ -9,8 +9,7 @@
 
 // A threadsafe-queue.
 template <class T>
-class SafeQueue
-{
+class SafeQueue {
 public:
 	SafeQueue():
 	eventid(eventfd(0, EFD_CLOEXEC)) {}
@@ -33,14 +32,14 @@ public:
 
 	// Get the "front"-element.
 	// If the queue is empty, wait till a element is avaiable.
-	bool dequeue(T* val, bool wait = true) {
+	bool dequeue(T& val, bool wait = true) {
 		std::unique_lock<std::mutex> lock(mutex);
 		while(queue.empty()) {
 			if(!wait) return false;
 			// release lock as long as the wait and reaquire it afterwards.
 			cond.wait(lock);
 		}
-		*val = queue.front();
+		val = queue.front();
 		queue.pop();
 		return true;
 	}
