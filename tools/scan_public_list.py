@@ -51,8 +51,12 @@ def list_anon_dir(path, old_entries):
                 print ("file not found")
                 continue
 
+            if entry[0] == '.':
+                # Skip hidden folders
+                continue
+
             try:
-                # Of the folder is empty we should safely ignore it;
+                # If the folder is empty we should safely ignore it;
                 if not list(os.listdir(localpath)):
                     continue
             except FileNotFoundError:
@@ -144,6 +148,10 @@ def generate_anonmap(config, existing_anonmap):
         try:
             path = basepath + "/public"
             for entry in os.listdir(path):
+                if str.startswith(entry, "new_"):
+                    # Skip folders, starting with "new_" (part of the old balancer)
+                    continue
+
                 try:
                     if [name for name in os.listdir(path + "/" + entry)]:
                         public_entries.append((entry, path + "/" + entry))
