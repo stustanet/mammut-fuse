@@ -15,6 +15,7 @@ import socket
 import json
 import libconf
 import tempfile
+import stat
 
 ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
@@ -33,30 +34,40 @@ def list_anon_dir(path, old_entries):
     If a pair is found, it is left unchanged, if not a new anon directory mapping is
     defined by adding a_ as prefix and a random three letter suffix.
     """
-    stat = dict(STAT_TEMPLATE)
+    stats = dict(STAT_TEMPLATE)
 
     public_entries = []
     for anonuser in os.listdir(path):
         anonpath = path + "/" + anonuser
         for entry in os.listdir(anonpath):
             out_path = anonpath + "/" + entry
+            localpath = anonpath + "/" + entry
             try:
-                # Of the folder is empty we should safely ignore it;
-                if not [name for name in os.listdir(path + "/" + entry)]:
+                localstat = os.stat(localpath)
+                if not stat.S_ISDIR(localstat.st_mode):
+                    # Skip files
                     continue
             except FileNotFoundError:
-                pass
+                print ("file not found")
+                continue
+
+            try:
+                # Of the folder is empty we should safely ignore it;
+                if not list(os.listdir(localpath)):
+                    continue
+            except FileNotFoundError:
+                print("Should not be reached")
+                continue
 
             known = False
             for okey, oval in old_entries.items():
                 if out_path == oval:
-                    stat['known'] += 1
+                    stats['known'] += 1
                     public_entries.append((okey, out_path))
-                    known = True
+                    found = True
                     break
-
-            if not known:
-                stat['new'] += 1
+            else:
+                stats['new'] += 1
                 new_entry = ""
                 for char in entry:
                     if not char in ALLOWED_CHARS:
@@ -66,15 +77,17 @@ def list_anon_dir(path, old_entries):
                 # Repeat until a unique identifier was found;
                 while True:
                     # Generate a new random string for identification
-                    suffix = ''.join(random.choice(string.ascii_uppercase
-                                                   + string.ascii_lowercase
-                                                   + string.digits)
-                                     for _ in range(3))
+                    suffix = ''.join(
+                        random.choice(
+                            string.ascii_uppercase
+                            + string.ascii_lowercase
+                            + string.digits)
+                        for _ in range(3))
                     test = "a_" + new_entry + "_" + suffix
                     if not test in public_entries:
                         break
                 public_entries.append((test, anonpath + "/" + entry))
-    return public_entries, stat
+    return public_entries, stats
 
 
 def read_anonmap(anonmapfile):
@@ -144,14 +157,16 @@ def generate_anonmap(config, existing_anonmap):
             public_entries += entries
             stats = {key: oldv + stat[key] for key, oldv in stats.items()}
         except FileNotFoundError:
+            # usually means that /anonym is not there
             pass
+            #print ("Filenotfounderror", e)
 
     # here it is converted into a dict, because from now on it is better to work
     # with a dict
     new_anonmap = {key: value for key, value in public_entries}
 
     stats['lost'] = len(existing_anonmap) - stats['known'] - stats['public']
-    changed = len(existing_anonmap) != len(new_anonmap)
+    changed = existing_anonmap != new_anonmap
     if not changed:
         for key, value in new_anonmap.items():
             if not key in existing_anonmap or existing_anonmap[key] != value:
@@ -174,6 +189,9 @@ def trigger_update(config):
     if status['state'] != 'success':
         print("Have an error: ", retval)
         return 1
+    else:
+        print("Everything alright, mammutfsd reported size: ",
+              status['response']['newsize'])
     return 0
 
 
