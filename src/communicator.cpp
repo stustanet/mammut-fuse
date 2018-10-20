@@ -134,7 +134,6 @@ bool Communicator::connect(bool initial_attempt) {
 	std::string mountpoint = this->config->mountpoint();
 	std::string username = this->config->username();
 
-	std::cout << "mountpoint" << this->config->mountpoint();
 	sstrbuf << "{\"op\":\"hello\",\"user\":\"" << username << "\","
 	        << "\"mountpoint\":\"" << mountpoint << "\"}\n";
 	send_command(sstrbuf.str());
