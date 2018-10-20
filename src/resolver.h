@@ -39,8 +39,13 @@ public:
 	 * module
 	 */
 	Module *getModuleFromPath (const char *path, const char *&remaining_path) {
-		int len = strlen(path);
+		// If we only have a single module, we map it directly through
+		if (this->is_single_module()) {
+			remaining_path = path;
+			return this->get_single_module();
+		}
 
+		int len = strlen(path);
 		if (len <= 1) {
 			remaining_path = path;
 			return getModule("default");
@@ -77,6 +82,19 @@ public:
 		} else {
 			return false;
 		}
+	}
+
+	bool is_single_module() {
+		return this->activated.size() == 2; // default and XX
+	}
+
+	Module *get_single_module() {
+		for (const auto &m : this->activated) {
+			if (m.first != "default") {
+				return m.second;
+			}
+		}
+		return nullptr;
 	}
 
 	const std::map<std::string, Module *> &activatedModules() const {
