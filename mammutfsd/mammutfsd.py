@@ -95,9 +95,9 @@ class MammutfsdClient:
                 else:
                     if 'state' in data:
                         # This is a state message!
-                        await self.mfsd.write("result: " + str(data) + "\n")
+                        await self.mfsd.write(json.dumps(data))
                     elif 'op' in data and 'module' in data:
-                        await self.mfsd.write("fileop: " + str(data) + "\n")
+                        await self.mfsd.write(json.dumps(data))
                         # Dispatch plugin calls to another coroutine
                         await self._plugin_fileop_queue.put(data)
                     elif 'event' in data and data['event'] == 'namechange':
