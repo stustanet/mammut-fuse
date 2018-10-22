@@ -9,10 +9,10 @@ class RedisFiller:
         self.mfsd = mfsd
         self.loop = loop
 
-        mfsd.register("stats", self.stats)
+        mfsd.register("redis-stats", self.stats)
 
-    async def stats(self, args):
-        await self.mfsd.write("Sorry no stats for you\n")
+    async def stats(self, client, writer, args):
+        writer.write(b"Sorry no stats for you\n")
 
 
 async def init(loop, mfsd):

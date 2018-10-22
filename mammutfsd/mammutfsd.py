@@ -30,12 +30,8 @@ class MammutfsdClient:
     Represents one single connected mammutfs
     """
 
-    def __init__(self, reader, writer, mfsd):
-        self.reader = reader
-        self.writer = writer
+    def __init__(self, reader, writer, mfsd, removal_queue):
         self.mfsd = mfsd
-        self.read_task = None
-        self.plugin_call_task = None
         self.details = {}
 
         self._plugin_fileop_queue = asyncio.Queue(loop=self.mfsd.loop)
@@ -43,24 +39,20 @@ class MammutfsdClient:
         self._request_pending = False
         self._request_queue = asyncio.Queue(loop=self.mfsd.loop)
 
+        self.writer = writer
+        self.read_task = self.mfsd.loop.create_task(
+            self.readloop(reader, writer, removal_queue))
+        self.plugin_call_task = self.mfsd.loop.create_task(
+            self.plugin_call_loop())
 
-    async def run(self):
-        """
-        Start the shiat
-        """
-        self.read_task = self.mfsd.loop.create_task(self.readloop())
-        self.plugin_call_task = self.mfsd.loop.create_task(self.plugin_call_loop())
-
-    async def readloop(self):
+    async def readloop(self, reader, writer, removal_queue):
         """
         Wait for incoming data, decode it and forward it to the plugins and
         a possible interactive user
         """
-        # Hello-loopt
+        # Hello-loop
         while True:
-            line = await self.reader.readline()
-            if not line:
-                break
+            line = await reader.readline()
             try:
                 data = json.loads(line.decode('utf-8'))
                 if 'op' in data and data['op'] == 'hello':
@@ -71,53 +63,72 @@ class MammutfsdClient:
                     break
                 else:
                     self.mfsd.log.warning("Invalid client hello received: %s", line)
+                    writer.close()
+                    await writer.wait_closed()
             except json.JSONDecodeError:
                 self.mfsd.log.warning("Hello: invalid data received: " + str(line))
+                writer.close()
+                await writer.wait_closed()
 
         # Working loop
-        while True:
-            line = await self.reader.readline()
-            if not line:
-                # We should die - this could be tricky
-                # 1. This loop must die   < done here by returning
-                # 2. This task mus be removed from the running clients
-                # 2. This task must die   < done here by returning
-                # 3. This task mus be read
-                await self.kill()
-                return
-            try:
-                data = json.loads(line.decode('utf-8'))
+        try:
+            while True:
+                line = await reader.readline()
+                #self.mfsd.info("read line: " + str(line))
+                if not line:
+                    # We should die - this could be tricky
+                    # 1. This loop must die   < done here by returning
+                    # 2. This task mus be removed from the running clients
+                    # 2. This task must die   < done here by returning
+                    # 3. This task mus be read
+                    break
+
+                try:
+                    data = json.loads(line.decode('utf-8'))
+                except json.JSONDecodeError:
+                    self.mfsd.log.warn("Invalid data received: " + str(line))
+                    continue
+
                 if self._request_pending:
                     # A request can intercept the next flying message
                     # this might actually lead to races, when a file is
                     # changed at the same time
                     await self._request_queue.put(data)
                 else:
-                    if 'state' in data:
-                        # This is a state message!
-                        await self.mfsd.write(json.dumps(data))
-                    elif 'op' in data and 'module' in data:
-                        await self.mfsd.write(json.dumps(data))
-                        # Dispatch plugin calls to another coroutine
-                        await self._plugin_fileop_queue.put(data)
-                    elif 'event' in data and data['event'] == 'namechange':
-                        # Handle events
-                        await self.mfsd.name_change(data)
-                    else:
-                        self.mfsd.log.warning("Unknown data received: " + str(data))
-            except json.JSONDecodeError:
-                self.mfsd.log.warn("Invalid data received: " + str(line))
+                    await self.process_message(data)
+
+        finally:
+            removal_queue.put_nowait(self)
+            self.mfsd.log.info("fs client disconnect")
+
+
+    async def process_message(self, data):
+        """
+        Decode a received message from a mammutfs instance
+        """
+        if 'state' in data:
+            # This is a state message!
+            await self.mfsd.global_write(json.dumps(data))
+        elif 'op' in data and 'module' in data:
+            await self.mfsd.global_write(json.dumps(data))
+            # Dispatch plugin calls to another coroutine
+            await self._plugin_fileop_queue.put(data)
+        elif 'event' in data and data['event'] == 'namechange':
+            # Handle events
+            await self.mfsd.name_change(data)
+        else:
+            self.mfsd.log.warning("Unknown data received: " + str(data))
 
     async def plugin_call_loop(self):
         """
         Plugin calls should not be run in the scope if the readloop,
         because plugins would not be able to send commands to a mammutfs, since
-        the recieval loop is blocked.
+        the loop is busy doing this request
         Therefore this loops only purpose is to call plugins
         """
         while True:
             data = await self._plugin_fileop_queue.get()
-            await self.mfsd.call_plugin('on_fileop', self, data)
+            await self.mfsd.call_plugin('on_fileop', self, data, writer=None)
 
     async def request(self, command):
         """
@@ -137,7 +148,7 @@ class MammutfsdClient:
             self.writer.write(command.encode('utf-8'))
             await self.writer.drain()
         except ConnectionResetError:
-            await self.kill()
+            await self.close()
 
     async def close(self):
         """
@@ -153,14 +164,6 @@ class MammutfsdClient:
             await self.plugin_call_task
         except asyncio.CancelledError:
             pass
-
-    async def kill(self):
-        """
-        Send this client to the graveyard and enshure that it will not receive
-        commands
-        """
-        self.mfsd.client_removal_queue.put_nowait(self)
-        self.mfsd.log.info("fs client disconnect")
 
 
     async def anonym_raid(self):
@@ -216,60 +219,65 @@ class MammutfsDaemon:
     command.split(' ') for possible command line args
     """
 
-    def __init__(self, configfile, **kwargs):
+    def __init__(self, configfile, loop, **kwargs):
         with open(configfile) as cfgf:
             self.config = libconf.load(cfgf)
 
         for key, value in kwargs.items():
             self.config['mammutfsd'][key] = value
 
-        self.log = logging.getLogger('main')
-        self._janitortask = None
-        self._interactionsocket = None
+        self.log = logging.getLogger('mammutfsd')
         self._commands = {}
         self._plugins = []
         self._clients = []
-        self.client_removal_queue = None
 
-        self.loop = None
-        self.connect_event = None
-        self.reader = None
-        self.writer = None
-        self.stdin_reader = None
-        self.stdout_writer = None
+        self._writers = []
 
-    async def start(self, loop=None):
-        """ Start the different parts of the daemon """
         if not loop:
             loop = asyncio.get_event_loop()
         self.loop = loop
-
-        self.client_removal_queue = asyncio.Queue(loop=self.loop)
-
-        self.connect_event = asyncio.Event(loop=self.loop)
-
-        await asyncio.start_unix_server(self.client_connected, loop=self.loop,
-                                        path=self.config['daemon_socket'])
 
         # now we have to change the sockets permissions to 0777 - so mammutfs
         # can actually connect
         os.chmod(self.config['daemon_socket'], 0o777)
 
-        if self.config["mammutfsd"]["interaction"] in ("net", "stdin"):
-            self._interactionsocket = loop.create_task(self.interactionsocket())
+        self._interactionsocket = loop.create_task(self.interactionsocket())
+        self._clientmanagementtask = loop.create_task(self.client_management())
 
-        self._janitortask = loop.create_task(self.monitorsocket())
-        await self._load_plugins()
+        loop.run_until_complete(self._load_plugins())
 
-    async def monitorsocket(self):
+    async def client_management(self):
         """
         An client will insert itself into here if it wants to die as some kind
         of suicide booth
         """
-        while True:
-            to_remove = await self.client_removal_queue.get()
-            self._clients = [client for client in self._clients if client != to_remove]
-            await to_remove.close()
+
+        client_removal_queue = asyncio.Queue(loop=self.loop)
+
+        server = await asyncio.start_unix_server(
+            lambda r, w: self.client_connected(r, w, client_removal_queue),
+            loop=self.loop,
+            path=self.config['daemon_socket'])
+
+        try:
+            while True:
+                to_remove = await client_removal_queue.get()
+                self._clients = [c for c in self._clients if c != to_remove]
+                await to_remove.close()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+
+    async def client_connected(self, reader, writer, removal_queue):
+        """
+        Called whenever a new mammutfs connected
+        """
+        self.log.info("client connected")
+        client = MammutfsdClient(reader, writer, self, removal_queue)
+        self._clients.append(client)
+        await self.call_plugin('on_client', client, {}, writer=None)
+
 
     def register(self, command, callback):
         """
@@ -298,7 +306,7 @@ class MammutfsDaemon:
             except ImportError:
                 self.log.error("Could not load plugin: %s", pluginname)
 
-    async def call_plugin(self, function, client, args):
+    async def call_plugin(self, function, client, args, writer=None):
         """
         Call the defined function (as string) on all plugins.
         client and args are the arguments that will be forwarded to the function
@@ -309,20 +317,20 @@ class MammutfsDaemon:
             except AttributeError:
                 # The plugin did not have the method
                 continue
+
+            if writer is None:
+                async def noop():
+                    return
+                writer = type("GlobalWriter", (object,), {
+                    "write": self.global_write,
+                    "drain": noop
+                })
+
             if asyncio.iscoroutinefunction(func):
-                await func(client, args)
+                await func(client, writer, args)
             else:
-                func(client, args)
-
-    async def client_connected(self, reader, writer):
-        """
-        Called whenever a new mammutfs connected
-        """
-        client = MammutfsdClient(reader, writer, self)
-        self._clients.append(client)
-        await self.call_plugin('on_client', client, {})
-        await client.run()
-
+                func(client, writer, args)
+            await writer.drain()
 
     async def name_change(self, data):
         """
@@ -330,97 +338,88 @@ class MammutfsDaemon:
         of public file listing related files, such as display name changes
         """
         if data['event'] == 'namechange' and "source" in data and "dest" in data:
-            await self.call_plugin('on_namechange', None, data)
+            await self.call_plugin('on_namechange', None, data, writer=None)
 
-    async def write(self, message):
+    async def global_write(self, message):
         """
         Something like "print" but the config defines, if it forwards to stdin
         or to the networksocket
         """
-        if not self.writer:
-            print(message, end='')
-        else:
-            try:
-                self.writer.write(message.encode('utf-8'))
-                await self.writer.drain()
-            except IOError:
-                self.writer = self.stdout_writer
+        asyncio.gather(*[(w.write(message.encode('utf-8')), w.drain())[1]
+                         for w in self._writers])
 
-    async def wait_for_observer(self, reader, writer):
+    async def handle_client(self, reader, writer):
         """
         Handler function called whenever an observer connects.
         This is used to connect read and write pipes
         """
-        if self.writer:
-            await self.write("Your connection has been overwritten. "
-                             "You will not receive any more data\n")
+        self._writers.append(writer)
 
-        # printing here may lead to death - so dont do it!
-        #print("mammutfsd: interaction client connect")
-        self.reader = reader
-        self.writer = writer
-        self.connect_event.set()
+        # Run the interaction
+        try:
+            while True:
+                # Await any incoming message
+                line = await reader.readline()
+
+                if not line:
+                    break
+
+                line = line.decode('utf-8').strip()
+                if not line:
+                    continue
+
+                lineargs = line.split(' ')
+                try:
+                    asyncio.gather(*[callback(self, writer, lineargs)
+                                     for callback in self._commands[lineargs[0]]])
+                except KeyError:
+                    writer.write(("ERROR: command not found: %s\n"%lineargs[0])
+                                 .encode('utf-8'))
+                    await writer.drain()
+                    # and hope it was the lineargs problem
+        finally:
+            # Upon termination. remove the writer again
+            self._writers = [w for w in self._writers if w != writer]
 
     async def interactionsocket(self):
         """
         Manage keyboard interaction in interactive mode
         """
 
-        try:
-            _ = self.config['mammutfsd']['interaction']
-        except KeyError:
-            self.config['mammutfsd']['interaction'] = 'stdin'
-
-
-        writer_transport, writer_protocol = await self.loop.connect_write_pipe(
-            asyncio.streams.FlowControlMixin, sys.stdout)
-        self.stdout_writer = asyncio.StreamWriter(writer_transport, writer_protocol, None,
-                                                  self.loop)
         server = None
 
-        if self.config['mammutfsd']['interaction'] == 'stdin':
-            # We try not to have to connectthe stdin reader, if not neccessary
-            self.stdin_reader = asyncio.StreamReader()
-            reader_protocol = asyncio.StreamReaderProtocol(self.reader)
-            await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
+        # We try not to have to connectthe stdin reader, if not neccessary
+        writer_transport, writer_protocol = await self.loop.connect_write_pipe(
+            asyncio.streams.FlowControlMixin, sys.stdout)
+        stdout_writer = asyncio.StreamWriter(writer_transport, writer_protocol, None,
+                                             self.loop)
 
-            self.reader = self.stdin_reader
-            self.writer = self.stdout_writer
-        elif self.config['mammutfsd']['interaction'] == 'net':
-            port = self.config['mammutfsd']['port']
-            server = await asyncio.start_server(self.wait_for_observer, '127.0.0.1',
-                                                int(port), loop=self.loop)
-            await self.connect_event.wait()
-            self.connect_event.clear()
+        stdin_reader = asyncio.StreamReader()
+        reader_protocol = asyncio.StreamReaderProtocol(stdin_reader)
+        await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
 
+        stdin_task = self.loop.create_task(
+            self.handle_client(stdin_reader, stdout_writer))
+
+        self._writers.append(stdout_writer)
+
+        port = self.config['mammutfsd']['port']
+        server = await asyncio.start_server(self.handle_client, '127.0.0.1',
+                                            int(port), loop=self.loop)
+
+        # This will wait forever - or until a CancelledError is thrown!
+        noevent = asyncio.Event(loop=self.loop)
         try:
-            while True:
-                if not self.reader:
-                    # The reader is none if it disconnected previously
-                    #print("mammutfsd: interaction client disconnect")
-                    await self.connect_event.wait()
-                    self.connect_event.clear()
-
-                line = await self.reader.readline()
-                if not line:
-                    self.writer = self.stdout_writer
-                    self.reader = None
-                    continue
-                line = line.decode('utf-8').strip()
-                if not line:
-                    await self.write("") # We send an empty frame, to stop listeness
-                    continue
-                lineargs = line.split(' ')
-                try:
-                    asyncio.gather(*[callback(lineargs)
-                                     for callback in self._commands[lineargs[0]]])
-                except KeyError:
-                    await self.write("ERROR: command not found: %s\n"%lineargs[0])
-                    # and hope it was the lineargs problem
+            await noevent.wait()
         finally:
-            if server:
-                server.close()
-                await server.wait_closed()
+            stdin_task.cancel()
+            try:
+                await stdin_task
+            except asyncio.CancelledError:
+                pass
+
+            server.close()
+            await server.wait_closed()
 
     async def sendall(self, command):
         """
@@ -457,8 +456,8 @@ class MammutfsDaemon:
                 pass
 
         try:
-            self._janitortask.cancel()
-            await self._janitortask
+            self._clientmanagementtask.cancel()
+            await self._clientmanagementtask
         except asyncio.CancelledError:
             pass
 
@@ -471,8 +470,8 @@ def main():
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()
-    mammutfs = MammutfsDaemon(args.config, **vars(args))
-    loop.run_until_complete(mammutfs.start())
+    mammutfs = MammutfsDaemon(args.config, loop, **vars(args))
+
     try:
         loop.run_forever()
     except KeyboardInterrupt:
