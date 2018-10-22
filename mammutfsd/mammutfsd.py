@@ -397,7 +397,7 @@ class MammutfsDaemon:
             while True:
                 if not self.reader:
                     # The reader is none if it disconnected previously
-                    print("mammutfsd: interaction client disconnect")
+                    #print("mammutfsd: interaction client disconnect")
                     await self.connect_event.wait()
                     self.connect_event.clear()
 
