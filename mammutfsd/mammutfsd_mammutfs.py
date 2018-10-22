@@ -227,7 +227,7 @@ class MammutfsdBaseCommands:
         else:
             await self.selected_client.write(cmd)
 
-    async def command(self, cmd, allow_targeting=True):
+    async def command(self, client, writer, cmd, allow_targeting=True):
         """
         Translate a command to send it to a mammutfs
         """
@@ -241,39 +241,42 @@ class MammutfsdBaseCommands:
             # Unknown command
             raise
 
-    async def mfscmd(self, cmd):
+    async def mfscmd(self, client, writer, cmd):
         """
         Send the raw command
         """
         cmd = ' '.join(cmd[1:])
         await self.send(cmd, True)
 
-    async def setconfig(self, cmd):
+    async def setconfig(self, client, writer, cmd):
         """
         Set a config value at one or all connected mammutfs systems
         """
         if len(cmd) < 3:
-            self.mfsd.write("Error: Usage {} config value\n".format(cmd[0]))
+            writer.write("Error: Usage {} config value\n".format(cmd[0]).encode('utf-8'))
+            await writer.drain()
         self.send("SETCONFIG " + cmd[1] + "=" + cmd[2], allow_targeting=True)
 
-    async def getconfig(self, cmd):
+    async def getconfig(self, client, writer, cmd):
         """
         get a config value for one or all connected mammutfs systems
         """
         if len(cmd) < 2:
-            self.mfsd.write("Error: Usage {} config\n".format(cmd[0]))
-        self.send("CONFIG " + cmd[1], allow_targeting=True)
+            writer.write("Error: Usage {} config\n".format(cmd[0]).encode('utf-8'))
+            await writer.drain()
+        await self.send("CONFIG " + cmd[1], allow_targeting=True)
 
-    async def getclients(self, _):
+    async def getclients(self, client, writer, cmd):
         """
         get a list of connected clients together with some raw information
         """
         for client in self.mfsd._clients:
-            await self.mfsd.write("Client: {} mounted at {}\n".format(
+            writer.write("Client: {} mounted at {}\n".format(
                 client.details['user'],
-                client.details['mountpoint']))
+                client.details['mountpoint']).encode('utf-8'))
+        await writer.drain()
 
-    async def focus_client(self, cmd):
+    async def focus_client(self, client, writer, cmd):
         """
         Select a single client, to target all following commands only to this
         client.
@@ -281,7 +284,8 @@ class MammutfsdBaseCommands:
         """
         if len(cmd) <= 1 or not cmd[1]:
             self.selected_client = None
-            await self.mfsd.write("Unselected client\n")
+            writer.write("Unselected client\n".encode('utf-8'))
+            await writer.drain()
             return
 
         parameter = cmd[1]
@@ -289,7 +293,9 @@ class MammutfsdBaseCommands:
             if (client.details['user'] == parameter
                 or client.details['mountpoint'] == parameter):
                 self.selected_client = client
-                await self.mfsd.write("Selected Client: %s\n"%str(client.details))
+                writer.write("Selected Client: {}\n"
+                             .format(client.details).encode('utf-8'))
+                await writer.drain()
                 break
 
     async def on_fileop(self, client, fileop):

@@ -10,17 +10,21 @@ class MammutfsdHelp:
 
         self.mfsd.register('help', self.display_help)
 
-    async def display_help(self, _):
+    async def display_help(self, client, writer, _):
+        #import pdb; pdb.set_trace()
         for command, issuer in self.mfsd._commands.items():
-            await self.mfsd.write(" %s\n"%command)
+            writer.write((" %s\n"%command).encode('utf-8'))
             for plugin in issuer:
                 try:
-                    await self.mfsd.write(plugin.get_help(command) + "\n")
+                    writer.write((plugin.get_help(command) + "\n").encode('utf-8'))
                 except AttributeError:
-                    await self.mfsd.write("\t|- %s\n"%plugin.__qualname__)
+                    # Maybe we can even generate the method call?
+                    writer.write(("\t|- %s\n"%plugin.__qualname__).encode('utf-8'))
                 except KeyError:
-                    await self.mfsd.write(
-                        "\t|- Invalid Command for %s\n"%plugin.__qualname__)
+                    writer.write(
+                        ("\t|- Invalid Command for %s\n"%plugin.__qualname__)
+                        .encode('utf-8'))
+            await writer.drain()
 
     async def teardown(self):
         return
