@@ -137,7 +137,6 @@ public:
 	                   fuse_fill_dir_t filler,
 	                   off_t offset,
 	                   struct fuse_file_info *fi) override {
-		//todo load shared listing
 		if (strcmp(path, "/") == 0) {
 			if (this->list.empty()) {
 				this->rescan();
@@ -150,16 +149,13 @@ public:
 
 			for (const auto  &entry : list) {
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
-
 					this->error("lister::readdir", "filler failed", path);
 					return -ENOMEM;
 				}
 			}
 			return 0;
-		} else {
-			return Module::readdir(path, buf, filler, offset, fi);
 		}
-		return 0;
+		return Module::readdir(path, buf, filler, offset, fi);
 	}
 
 	virtual int open(const char *path, struct fuse_file_info *fi) override {

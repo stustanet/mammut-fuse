@@ -87,6 +87,8 @@ public:
 		#ifdef ENABLE_CONFIG_DEBUG
 		return std::cout;
 		#else
+		// Clean it - so it wont overflow
+		this->voidstream.str(std::string());
 		return this->voidstream;
 		#endif
 	}
