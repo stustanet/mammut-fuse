@@ -326,15 +326,11 @@ class MammutfsDaemon:
                     "drain": noop
                 })
 
-            try:
-                if asyncio.iscoroutinefunction(func):
-                    await func(client, writer, args)
-                else:
-                    func(client, writer, args)
-                    await writer.drain()
-            except ConnectionResetError:
-                # Somehow kill the callee
-                pass
+            if asyncio.iscoroutinefunction(func):
+                await func(client, writer, args)
+            else:
+                func(client, writer, args)
+            await writer.drain()
 
     async def name_change(self, data):
         """
@@ -375,7 +371,7 @@ class MammutfsDaemon:
                 lineargs = line.split(' ')
                 try:
                     await asyncio.gather(*[callback(self, writer, lineargs)
-                                     for callback in self._commands[lineargs[0]]])
+                                           for callback in self._commands[lineargs[0]]])
                 except KeyError:
                     writer.write(("ERROR: command not found: %s\n"%lineargs[0])
                                  .encode('utf-8'))
