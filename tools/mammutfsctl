@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+
+import argparse
+import socket
+import sys
+
+def MammutfsdConnectCommand(*cmds):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    mfsd = ('localhost', 1337)
+    sock.connect(mfsd)
+    sock.sendall((" ".join(cmds) + "\n").encode('ascii'))
+
+    data = sock.recv(4096)
+    sock.close()
+    return data.decode('ascii')
+
+class Mammutfsctl:
+    def reload(self, args):
+        print(MammutfsdConnectCommand("reload"))
+
+    def clear(self, args):
+        print(MammutfsdConnectCommand("clear"))
+
+    def getconfig(self, args):
+        print(MammutfsdConnectCommand("getconfig", args.key))
+
+    def setconfig(self, args):
+        print(MammutfsdConnectCommand("setconfig", args.key, args.value))
+
+    def clients(self, args):
+        print(MammutfsdConnectCommand("clients"))
+
+    def redis(self, args):
+        print(MammutfsdConnectCommand("redis-stats"))
+
+    def help(self, args):
+        ## TODO write proper help
+        print(MammutfsdConnectCommand("help"))
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command")
+    parser.add_argument("--target", action="store")
+    parser.add_argument("--key", action="store")
+    parser.add_argument("--value", action="store")
+
+    args = parser.parse_args()
+    mammutfsctl = Mammutfsctl()
+    command = getattr(mammutfsctl, args.command)
+    command(args)
+
+
+if __name__ == "__main__":
+    main()
