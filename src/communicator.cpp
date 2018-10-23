@@ -218,6 +218,10 @@ void Communicator::communication_thread() {
 						// check nevertheless
 						continue;
 					}
+
+					if (data[data.size()-1] != '\n') {
+						data += "\n";
+					}
 					send_command(data);
 				}
 			}
@@ -280,7 +284,7 @@ void Communicator::inotify(const std::string &operation,
 		sstrbuf << ", \"path2\":\"" << path2 << "\"";
 	}
 	sstrbuf << "}" << std::endl;
-	send(sstrbuf.str());
+	this->send(sstrbuf.str());
 }
 
 void Communicator::register_command(const std::string &unfiltered_command,
