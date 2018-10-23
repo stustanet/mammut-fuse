@@ -400,20 +400,22 @@ class MammutfsDaemon:
 
         server = None
 
-        # We try not to have to connectthe stdin reader, if not neccessary
-        writer_transport, writer_protocol = await self.loop.connect_write_pipe(
-            asyncio.streams.FlowControlMixin, sys.stdout)
-        stdout_writer = asyncio.StreamWriter(writer_transport, writer_protocol, None,
+        if self.config['mammutfsd']['interaction'] == "stdin":
+            # We try not to have to connectthe stdin reader, if not neccessary
+            writer_transport, writer_protocol = await self.loop.connect_write_pipe(
+                asyncio.streams.FlowControlMixin, sys.stdout)
+            stdout_writer = asyncio.StreamWriter(writer_transport, writer_protocol, None,
                                              self.loop)
 
-        stdin_reader = asyncio.StreamReader()
-        reader_protocol = asyncio.StreamReaderProtocol(stdin_reader)
-        await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
+            stdin_reader = asyncio.StreamReader()
+            reader_protocol = asyncio.StreamReaderProtocol(stdin_reader)
+            await self.loop.connect_read_pipe(lambda: reader_protocol, sys.stdin)
+            stdin_task = self.loop.create_task(
+                self.handle_client(stdin_reader, stdout_writer))
 
-        stdin_task = self.loop.create_task(
-            self.handle_client(stdin_reader, stdout_writer))
-
-        self._writers.append(stdout_writer)
+            self._writers.append(stdout_writer)
+        else:
+            stdin_task = None
 
         port = self.config['mammutfsd']['port']
         server = await asyncio.start_server(self.handle_client, '127.0.0.1',
@@ -424,11 +426,12 @@ class MammutfsDaemon:
         try:
             await noevent.wait()
         finally:
-            stdin_task.cancel()
-            try:
-                await stdin_task
-            except asyncio.CancelledError:
-                pass
+            if stdin_task:
+                stdin_task.cancel()
+                try:
+                    await stdin_task
+                except asyncio.CancelledError:
+                    pass
 
             server.close()
             await server.wait_closed()
