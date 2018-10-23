@@ -345,8 +345,18 @@ class MammutfsDaemon:
         Something like "print" but the config defines, if it forwards to stdin
         or to the networksocket
         """
-        asyncio.gather(*[(w.write(message.encode('utf-8')), w.drain())[1]
-                         for w in self._writers])
+        retvals = await asyncio.gather(*[(w.write(message.encode('utf-8')), w.drain())[1]
+                                         for w in self._writers], return_exceptions=True)
+
+
+        closed = []
+        for r, w in zip(self._writers, retvals):
+            if isinstance(r, Exception):
+                w.close()
+                await w.wait_closed()
+                closed.append(w)
+
+        self._writers = [ w for w in self._writers if w not in closed ]
 
     async def handle_client(self, reader, writer):
         """
