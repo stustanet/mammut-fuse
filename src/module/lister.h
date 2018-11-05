@@ -128,7 +128,16 @@ public:
 			this->trace("lister::opendir", path);
 			return 0;
 		} else {
-			return Module::opendir(path, fi);
+			int retval = Module::opendir(path, fi);
+			// If the action did not succeed because the path was not found -
+			// maybe we need to use this as a trigger to rescan, and optimistically
+			// retry opening
+			if (retval == -ENOENT) {
+				if (try_rescan() != 0) {
+					retval = Module::opendir(path, fi);
+				}
+			}
+			return retval;
 		}
 	}
 
@@ -155,7 +164,17 @@ public:
 			}
 			return 0;
 		}
-		return Module::readdir(path, buf, filler, offset, fi);
+
+		int retval = Module::readdir(path, buf, filler, offset, fi);
+		// If the action did not succeed because the path was not found -
+		// maybe we need to use this as a trigger to rescan, and optimistically
+		// retry opening
+		if (retval == -ENOENT) {
+			if (try_rescan() != 0) {
+				retval = Module::readdir(path, buf, filler, offset, fi);
+			}
+		}
+		return retval;
 	}
 
 	virtual int open(const char *path, struct fuse_file_info *fi) override {
@@ -182,6 +201,12 @@ private:
 		std::string anon_mapping_file = config->anon_mapping_file();
 		std::stringstream ss;
 		ss << "using anon map: " << anon_mapping_file;
+
+		// Save timestamp of the current anonmap
+		struct stat statbuf;
+		::stat(anon_mapping_file.c_str(), &statbuf);
+		this->anonmap_mtime = statbuf.st_mtim;
+
 		std::ifstream file(anon_mapping_file, std::ios::in);
 		if (!file) {
 			this->warn("scan", "error opening annon mapping` file ", anon_mapping_file);
@@ -205,7 +230,22 @@ private:
 		return this->list.size();
 	}
 
+	int try_rescan() {
+		// Rescan the anonmap, if it was changed since the last read
+		//(for example if we encounter a ENOENT at root level path)
 
+		std::string anon_mapping_file = config->anon_mapping_file();
+		struct stat statbuf;
+		::stat(anon_mapping_file.c_str(), &statbuf);
+		if (statbuf.st_mtim.tv_sec != this->anonmap_mtime.tv_sec
+		    || statbuf.st_mtim.tv_nsec != this->anonmap_mtime.tv_nsec) {
+			return rescan();
+		} else {
+			return 0;
+		}
+	}
+
+	timespec anonmap_mtime;
 	std::map<std::string, std::string> list;
 	std::shared_ptr<Communicator> comm;
 };
