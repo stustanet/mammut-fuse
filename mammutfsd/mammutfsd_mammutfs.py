@@ -299,7 +299,7 @@ class MammutfsdBaseCommands:
                 await writer.drain()
                 break
 
-    async def on_fileop(self, client, fileop):
+    async def on_fileop(self, client, writer, fileop):
         """
         Will be called whenever a client performs a fileoperation.
         The fileop looks like:
