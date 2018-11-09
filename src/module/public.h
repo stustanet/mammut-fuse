@@ -84,7 +84,6 @@ public:
 		if (ret == 0) {
 			if (changed)
 				inotify("CHANGED", path);
-			inotify("RELEASE", path);
 		}
 		return ret;
 	}

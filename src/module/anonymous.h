@@ -95,8 +95,6 @@ public:
 			if (changed)
 				// if it has changed, we also trigger a special inotify!
 				inotify("CHANGED", path);
-			// We will always issue a release!
-			inotify("RELEASE", path);
 		}
 		return ret;
 	}
