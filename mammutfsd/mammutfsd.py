@@ -34,10 +34,13 @@ class MammutfsdClient:
         self.mfsd = mfsd
         self.details = {}
 
-        self._plugin_fileop_queue = asyncio.Queue(loop=self.mfsd.loop)
+        queue_limit = 1000
+        self._plugin_fileop_queue = asyncio.Queue(loop=self.mfsd.loop,
+                                                  maxsize=queue_limit)
 
         self._request_pending = False
-        self._request_queue = asyncio.Queue(loop=self.mfsd.loop)
+        self._request_queue = asyncio.Queue(loop=self.mfsd.loop
+                                            maxsize=queue_limit)
 
         self.writer = writer
         self.read_task = self.mfsd.loop.create_task(
@@ -119,6 +122,7 @@ class MammutfsdClient:
         else:
             self.mfsd.log.warning("Unknown data received: " + str(data))
 
+
     async def plugin_call_loop(self):
         """
         Plugin calls should not be run in the scope if the readloop,
@@ -128,7 +132,13 @@ class MammutfsdClient:
         """
         while True:
             data = await self._plugin_fileop_queue.get()
-            await self.mfsd.call_plugin('on_fileop', self, data, writer=None)
+            try:
+                await asyncio.wait_for(
+                    self.mfsd.call_plugin('on_fileop', self, data, writer=None),
+                    5)
+            except asyncio.TimeoutError:
+                print("Some plugin has timed out. This is bad!")
+
 
     async def request(self, command):
         """
@@ -140,6 +150,7 @@ class MammutfsdClient:
         self._request_pending = False
         return response
 
+
     async def write(self, command):
         """
         Send the command to the mammutfs and return immediately
@@ -149,6 +160,7 @@ class MammutfsdClient:
             await self.writer.drain()
         except ConnectionResetError:
             await self.close()
+
 
     async def close(self):
         """
@@ -180,6 +192,7 @@ class MammutfsdClient:
                 self.details['anonym_raid'] = raid
                 return raid
         return ""
+
 
     async def user(self):
         """
@@ -237,14 +250,11 @@ class MammutfsDaemon:
             loop = asyncio.get_event_loop()
         self.loop = loop
 
-        # now we have to change the sockets permissions to 0777 - so mammutfs
-        # can actually connect
-        os.chmod(self.config['daemon_socket'], 0o777)
-
         self._interactionsocket = loop.create_task(self.interactionsocket())
         self._clientmanagementtask = loop.create_task(self.client_management())
 
         loop.run_until_complete(self._load_plugins())
+
 
     async def client_management(self):
         """
@@ -258,6 +268,10 @@ class MammutfsDaemon:
             lambda r, w: self.client_connected(r, w, client_removal_queue),
             loop=self.loop,
             path=self.config['daemon_socket'])
+
+        # now we have to change the sockets permissions to 0777 - so mammutfs
+        # can actually connect
+        os.chmod(self.config['daemon_socket'], 0o777)
 
         try:
             while True:
@@ -289,6 +303,7 @@ class MammutfsDaemon:
             self._commands[command].append(callback)
         except KeyError:
             self._commands[command] = [callback]
+
 
     async def _load_plugins(self):
         """
