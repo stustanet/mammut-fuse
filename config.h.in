@@ -2,3 +2,4 @@
 #cmakedefine ENABLE_TRACELOG
 #cmakedefine ENABLE_CONFIG_DEBUG
 #cmakedefine TRACE_GETATTR
+#cmakedefine ENABLE_WRITE_NOTIFY

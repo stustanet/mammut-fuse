@@ -64,9 +64,11 @@ public:
 	                  off_t off,
 	                  struct fuse_file_info *fi) override {
 		int ret = Module::write(path, data, size, off, fi);
+#ifdef ENABLE_WRITE_NOTIFY
 		if (ret > 0 && size > 0) {
 			inotify("WRITE", path);
 		}
+#endif
 		return ret;
 	}
 

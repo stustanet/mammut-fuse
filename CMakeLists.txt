@@ -6,7 +6,8 @@ set (CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 message (${CMAKE_MODULE_PATH})
 
 set(SAVE_FILE_HANDLES YES CACHE BOOL
-	"limit the amount of file handles used, might cause problems with NFS")
+	"limit the amount of file handles used.")
+
 set(ENABLE_TRACELOG YES CACHE BOOL
 	"Enable verbose trace logging of every syscall")
 
@@ -14,7 +15,10 @@ set(CONFIG_DEBUG NO CACHE BOOL
 	"Enable verbose debugging of config values")
 
 set(TRACE_GETATTR NO CACHE BOOL
-	"Enable also getattr tracelog (very noisy)")
+	"enable also getattr tracelog (very noisy)")
+
+set(ENABLE_WRITE_NOTIFY NO CACHE BOOL
+	"Send WRITE (thousands) notifications to mammutfsd.")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/config.h)
