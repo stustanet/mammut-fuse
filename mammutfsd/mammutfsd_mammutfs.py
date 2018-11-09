@@ -239,6 +239,7 @@ class MammutfsdBaseCommands:
             await self.send(cmd, allow_targeting)
         except KeyError:
             # Unknown command
+            writer.write(b'{"state":"error", "msg":"unknown command"}')
             raise
 
     async def mfscmd(self, client, writer, cmd):

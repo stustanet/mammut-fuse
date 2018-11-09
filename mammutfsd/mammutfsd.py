@@ -39,7 +39,7 @@ class MammutfsdClient:
                                                   maxsize=queue_limit)
 
         self._request_pending = False
-        self._request_queue = asyncio.Queue(loop=self.mfsd.loop
+        self._request_queue = asyncio.Queue(loop=self.mfsd.loop,
                                             maxsize=queue_limit)
 
         self.writer = writer
@@ -318,8 +318,10 @@ class MammutfsDaemon:
                 # The plugin did not have a teardown method
                 self.log.info("Attribute Error")
                 self.log.exception(exp)
-            except ImportError:
+            except ImportError as e:
                 self.log.error("Could not load plugin: %s", pluginname)
+                self.log.error(e)
+
 
     async def call_plugin(self, function, client, args, writer=None):
         """
@@ -355,14 +357,17 @@ class MammutfsDaemon:
         if data['event'] == 'namechange' and "source" in data and "dest" in data:
             await self.call_plugin('on_namechange', None, data, writer=None)
 
+
     async def global_write(self, message):
         """
         Something like "print" but the config defines, if it forwards to stdin
         or to the networksocket
         """
-        retvals = await asyncio.gather(*[(w.write(message.encode('utf-8')), w.drain())[1]
-                                         for w in self._writers], return_exceptions=True)
+        for w in self._writers:
+            w.write(message.encode('utf-8'))
+            w.write(b"\n")
 
+        retvals = await asyncio.gather(*[w.drain() for w in self._writers])
 
         closed = []
         for r, w in zip(self._writers, retvals):
@@ -372,6 +377,7 @@ class MammutfsDaemon:
                 closed.append(w)
 
         self._writers = [ w for w in self._writers if w not in closed ]
+
 
     async def handle_client(self, reader, writer):
         """
@@ -397,6 +403,8 @@ class MammutfsDaemon:
                 try:
                     await asyncio.gather(*[callback(self, writer, lineargs)
                                            for callback in self._commands[lineargs[0]]])
+                    writer.write(b"\n")
+                    await writer.drain()
                 except KeyError:
                     writer.write(("ERROR: command not found: %s\n"%lineargs[0])
                                  .encode('utf-8'))
