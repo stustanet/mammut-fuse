@@ -195,6 +195,11 @@ public:
 		}
 	}
 
+	int statfs(const char *, struct statvfs *statbuf) override {
+		this->trace("lister::statfs", config->raids.front().c_str());
+		return ::statvfs(config->raids.front().c_str(), statbuf);
+	}
+
 private:
 	int rescan() {
 		// Read the mapping file
