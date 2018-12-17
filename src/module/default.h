@@ -88,13 +88,27 @@ public:
 		    __fsword_t f_spare[xxx]; // Padding bytes reserved for future use
 		    };
 		*/
-		// TODO: we need to find better values for this
-		statv->f_bsize = 40960;
-		statv->f_blocks = 4200;
-		statv->f_bfree = 1000;
-		statv->f_bavail = 1000;
-		statv->f_files = 1008;
-		statv->f_ffree = 100;
+
+		const size_t tib = 1024*1024*1024*1024;
+		const size_t block_size = 4096;
+		const size_t blocks_total = 42 * tib / block_size;
+		const size_t blocks_free = blocks_total / 2;
+
+		// Preferred size of writes to and reads (in bytes).
+		statv->f_bsize = 65536;
+
+		// Size of the file system's blocks (in bytes).
+		// Used together with the block counts below to infer the file system's space
+		// capacity and availability.
+		statv->f_frsize = block_size;
+
+		// block values are in units of f_frsize
+		statv->f_blocks = blocks_total;
+		statv->f_bfree = blocks_free;
+		statv->f_bavail = blocks_free;
+
+		statv->f_files = 42000;
+		statv->f_ffree = 21000;
 		return 0;
 	}
 
