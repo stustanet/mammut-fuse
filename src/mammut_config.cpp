@@ -143,4 +143,14 @@ void MammutConfig::update_user() {
 	          << " UID " << user_uid
 	          << " GID " << user_gid << std::endl;
 }
+
+std::string MammutConfig::get_first_raid() const {
+	const auto& raidlist = this->config->lookup("raids");
+	if (raidlist.begin() != raidlist.end()) {
+		return *raidlist.begin();
+	} else {
+		return "";
+	}
+}
+
 }
