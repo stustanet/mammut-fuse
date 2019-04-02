@@ -140,7 +140,9 @@ public:
 	std::function<void()> init_userconfig;
 	std::unordered_map<std::string, std::string> userconfig;
 
-	// todo database shit
+	/** For some applications, the first configured raid volume is needed **/
+	std::string get_first_raid() const;
+
 private:
 	mutable std::mutex libconfigaccess;
 	mutable std::istringstream buf;

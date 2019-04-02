@@ -38,7 +38,10 @@ public:
 			remainder = path.substr(pos);
 		}
 		if (this->basepathmapping.empty()) {
-			return -ENOENT;
+			// This is the root directory, queried when issuing
+			// statfs("/srv/backup") so we have to serve a valid directory here.
+			out = this->config->get_first_raid();
+			return 0;
 		}
 
 		auto it = this->basepathmapping.find(entry);
@@ -51,7 +54,7 @@ public:
 		return -EPERM;
 	}
 
-	int opendir(const char *path, struct fuse_file_info *fi) {
+	int opendir(const char *path, struct fuse_file_info *fi) override {
 		if (strcmp(path, "/") == 0) {
 			this->check_update_list();
 			this->trace("fullbackuplist::opendir", path);

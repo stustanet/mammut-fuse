@@ -88,13 +88,11 @@ public:
 		    __fsword_t f_spare[xxx]; // Padding bytes reserved for future use
 		    };
 		*/
-		// TODO: we need to find better values for this
-		statv->f_bsize = 40960;
-		statv->f_blocks = 4200;
-		statv->f_bfree = 1000;
-		statv->f_bavail = 1000;
-		statv->f_files = 1008;
-		statv->f_ffree = 100;
+		const std::string &first_raid = this->config->get_first_raid();
+		int rc = ::statvfs(first_raid.c_str(), statv);
+		if(rc < 0 && errno == ENOENT) {
+			return rc;
+		}
 		return 0;
 	}
 
