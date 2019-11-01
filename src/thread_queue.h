@@ -17,7 +17,7 @@ public:
 
 	// Add an element to the queue.
 	void enqueue(const T &t) {
-		std::unique_lock<std::mutex> lock(mutex);
+		std::unique_lock<std::mutex> lock(this->mutex);
 		queue.push(t);
 
 		int64_t val = queue.size();
@@ -33,7 +33,7 @@ public:
 	// Get the "front"-element.
 	// If the queue is empty, wait till a element is avaiable.
 	bool dequeue(T& val, bool wait = true) {
-		std::unique_lock<std::mutex> lock(mutex);
+		std::unique_lock<std::mutex> lock(this->mutex);
 		while(queue.empty()) {
 			if(!wait) return false;
 			// release lock as long as the wait and reaquire it afterwards.
@@ -49,7 +49,13 @@ public:
 	}
 
 	bool empty() {
+		std::unique_lock<std::mutex> lock(this->mutex);
 		return queue.empty();
+	}
+
+	size_t size() const {
+		std::unique_lock<std::mutex> lock(this->mutex);
+		return this->queue.size();
 	}
 private:
 	int eventid;

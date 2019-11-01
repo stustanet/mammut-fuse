@@ -661,10 +661,11 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 
 	// get stats for underlying filesystem
 	memset(statv, 0, sizeof(*statv));
+	printf("stat of %s -> %s\n", path, translated.c_str());
 	retstat = ::statvfs(translated.c_str(), statv);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->warn("statfs", "statvfs", translated);
+		this->error("statfs", "statvfs", translated);
 	}
 
 	return retstat;

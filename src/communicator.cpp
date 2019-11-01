@@ -187,7 +187,8 @@ void Communicator::communication_thread() {
 			if (!queue.empty()) {
 				// Fake an activation
 				uint64_t buffer = 1;
-				if (::write(this->queue.get_eventfd(), &buffer, 8) < 0) {
+				// TODO asdf write of 8 can't be assumed
+				if (::write(this->queue.get_eventfd(), &buffer, sizeof(buffer)) < 0) {
 					perror("Event write");
 					continue;
 				}
@@ -207,7 +208,8 @@ void Communicator::communication_thread() {
 					}
 					uint8_t buffer[8];
 					// We have the input event pending
-					if (::read(this->queue.get_eventfd(), buffer, 8) < 0) {
+					// TODO asdf: read of 8 can't be assumed!
+					if (::read(this->queue.get_eventfd(), buffer, sizeof(buffer)) < 0) {
 						perror("eventfd");
 						continue;
 					}
@@ -262,6 +264,18 @@ void Communicator::send_command(const std::string &data) {
 }
 
 void Communicator::send(const std::string &data) {
+	// jj-hack: limit the command queue size to avoid filling up gigs of RAM.
+	if (this->queue.size() > 10000) {
+		if (not this->performed_queue_full_op) {
+			perror("queue size limit reached");
+			this->performed_queue_full_op = true;
+		}
+		return;
+	}
+	else if (this->queue.size() < 1000) {
+		this->performed_queue_full_op = false;
+	}
+
 	if (data[data.size() - 1] != '\n') {
 		std::stringstream ss;
 		ss << data;

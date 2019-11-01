@@ -27,6 +27,13 @@ public:
 	int translatepath(const std::string &path, std::string &out) override {
 		this->check_update_list();
 
+		if (path == "/") {
+			// This is the root directory, queried when issuing
+			// statfs("/srv/backup") so we have to serve a valid directory here.
+			out = this->config->get_first_raid();
+			return 0;
+		}
+
 		size_t pos = path.find('/', 1);
 		std::string entry, remainder;
 		if (pos == std::string::npos) {
@@ -36,12 +43,6 @@ public:
 		} else {
 			entry = path.substr(1, pos - 1);
 			remainder = path.substr(pos);
-		}
-		if (this->basepathmapping.empty()) {
-			// This is the root directory, queried when issuing
-			// statfs("/srv/backup") so we have to serve a valid directory here.
-			out = this->config->get_first_raid();
-			return 0;
 		}
 
 		auto it = this->basepathmapping.find(entry);

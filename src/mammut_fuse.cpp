@@ -240,7 +240,7 @@ void mammut_destroy(void *userdata) {
 #undef GETMODULE
 
 int mammut_main (std::shared_ptr<ModuleResolver> resolver,
-                  std::shared_ptr<MammutConfig> config) {
+                 std::shared_ptr<MammutConfig> config) {
 	prctl(PR_SET_NAME, "mammutfs_main", 0, 0, 0);
 	openlog("mammutfs", LOG_PID, 0);
 
@@ -258,7 +258,7 @@ int mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	fuseargs.push_back("-oallow_other");         // To enable smb
 	fuseargs.push_back("-ouse_ino");             // Copy the underlying inodes instead of giving us new ones. Might give us more inodes!
 	// fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever
-                                                     //- this might be enabled, if nfs is making troubles!
+	                                               //- this might be enabled, if nfs is making troubles!
 	//fuseargs.push_back("-d");                    // Enable FUSE-DEBUG!
 
 	if (!config->deamonize()) {

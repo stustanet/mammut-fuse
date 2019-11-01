@@ -90,6 +90,9 @@ private:
 	};
 	std::unordered_map<std::string, command> commands;
 
+	/** if the queue is too full, emergency action must be taken */
+	bool performed_queue_full_op = false;
+
 	SafeQueue<std::string> queue;
 };
 }
