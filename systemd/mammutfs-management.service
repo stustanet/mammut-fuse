@@ -3,11 +3,10 @@ Description=Mammutfs Management Service
 After=raidmounts.target
 
 [Service]
-Type=simple
 User=nobody
 WorkingDirectory=/usr/local/sbin/mammut-fuse/mammutfsd
 ExecStart=/usr/local/sbin/mammut-fuse/mammutfsd/mammutfsd.py --config /etc/mammutfs/mammutfs.conf
-Restart=always
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
