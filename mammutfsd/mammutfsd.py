@@ -67,11 +67,11 @@ class MammutfsdClient:
                 else:
                     self.mfsd.log.warning("Invalid client hello received: %s", line)
                     writer.close()
-                    await writer.wait_closed()
+                    await writer.drain()
             except json.JSONDecodeError:
                 self.mfsd.log.warning("Hello: invalid data received: " + str(line))
                 writer.close()
-                await writer.wait_closed()
+                await writer.drain()
 
         # Working loop
         try:
@@ -280,7 +280,7 @@ class MammutfsDaemon:
                 await to_remove.close()
         finally:
             server.close()
-            await server.wait_closed()
+            await server.drain()
 
 
     async def client_connected(self, reader, writer, removal_queue):
@@ -373,7 +373,7 @@ class MammutfsDaemon:
         for r, w in zip(self._writers, retvals):
             if isinstance(r, Exception):
                 w.close()
-                await w.wait_closed()
+                await w.drain()
                 closed.append(w)
 
         self._writers = [ w for w in self._writers if w not in closed ]
@@ -457,7 +457,7 @@ class MammutfsDaemon:
                     pass
 
             server.close()
-            await server.wait_closed()
+            await server.drain()
 
     async def sendall(self, command):
         """
