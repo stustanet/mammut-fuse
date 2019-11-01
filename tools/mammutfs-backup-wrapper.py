@@ -23,12 +23,12 @@ mountpoint = config["mountpoint"]
 
 # 1. force the ACL on all backup folders
 # "getfacl" will not duplicate permissions!
-for raid in config["raids"]:
-    path = pathlib.Path(raid) / "backup"
-    if path.exists() and path.is_dir():
-        args = [setfacl, "-R", "-m", "u:%s:rx"%backupuser, str(path)]
-        print("Running", args)
-        subprocess.run(args)
+#for raid in config["raids"]:
+#    path = pathlib.Path(raid) / "backup"
+#    if path.exists() and path.is_dir():
+##        args = [setfacl, "-R", "-m", "u:%s:rx"%backupuser, str(path)]
+#        print("Running", args)
+#        subprocess.run(args)
 
 # 2. Drop user priviliges to the backup user
 pwnam = pwd.getpwnam(backupuser)

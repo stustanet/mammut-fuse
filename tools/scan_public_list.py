@@ -38,6 +38,11 @@ def list_anon_dir(path, old_entries):
 
     public_entries = []
     for anonuser in os.listdir(path):
+
+        if str.startswith(anonuser, "new_"):
+            # Skip folders, starting with "new_" (part of the old balancer)
+            continue
+
         anonpath = path + "/" + anonuser
         for entry in os.listdir(anonpath):
             out_path = anonpath + "/" + entry
