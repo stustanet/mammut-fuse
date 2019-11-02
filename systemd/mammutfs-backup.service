@@ -1,15 +1,15 @@
 
 [Unit]
 Description=Mammutfs backup lister
-Wants=raidmounts.target
-After=raidmounts.target
+Wants=mammut_ceph.service
+After=mammut_ceph.service
 
 [Service]
 Type=forking
 # Changeme
-User=backupfs
-WorkingDirectory=/usr/local/sbin/mammut-fuse
-ExecStart=/usr/local/sbin/mammut-fuse/tools/mammutfs-backup-wrapper.py
+#User=mammut-backup
+WorkingDirectory=/srv/mammutfs/mammut-fuse/
+ExecStart=/srv/mammutfs/mammut-fuse/tools/mammutfs-backup-wrapper.py
 Restart=always
 
 [Install]

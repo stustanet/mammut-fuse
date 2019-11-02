@@ -1,12 +1,12 @@
 [Unit]
 Description=Mammutfs user service for UID %i
-After=raidmounts.target
+After=mammut_ceph.service
 
 [Service]
 Type=forking
-WorkingDirectory=/usr/local/sbin/mammut-fuse
-ExecStart=/usr/local/sbin/mammut-fuse/tools/mammutfs-user-wrapper.py start %i
-ExecStop=/usr/local/sbin/mammut-fuse/tools/mammutfs-user-wrapper.py stop %i
+WorkingDirectory=/srv/mammutfs/mammut-fuse
+ExecStart=/srv/mammutfs/mammut-fuse/tools/mammutfs-user-wrapper.py start %i
+ExecStop=/srv/mammutfs/mammut-fuse/tools/mammutfs-user-wrapper.py stop %i
 Restart=always
 
 [Install]

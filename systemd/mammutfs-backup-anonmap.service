@@ -1,0 +1,6 @@
+[Unit]
+Description=Copy anonmap into backup
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c "cp /etc/mammutfs/anon.map /etc/mammutfs/anon.map_backups/anon.map-$(date -I)"

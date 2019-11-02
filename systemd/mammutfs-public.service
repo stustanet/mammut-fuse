@@ -1,13 +1,13 @@
 [Unit]
 Description=Mammutfs public lister
-Wants=raidmounts.target
-After=raidmounts.target
+Wants=mammut_ceph.service
+After=mammut_ceph.service
 
 [Service]
 Type=forking
 User=nobody
-WorkingDirectory=/usr/local/sbin/mammut-fuse
-ExecStart=/usr/local/sbin/mammut-fuse/build/mammutfs /etc/mammutfs/public-list.conf
+WorkingDirectory=/srv/mammutfs/mammut-fuse
+ExecStart=/srv/mammutfs/mammut-fuse/build/mammutfs /etc/mammutfs/public-list.conf
 Restart=always
 
 [Install]

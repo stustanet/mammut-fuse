@@ -4,7 +4,7 @@ Before=mammut-fuse-public.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/sbin/mammut-fuse/tools/scan_public_list.py /etc/mammutfs/public-list.conf /etc/mammutfs/anon.map /etc/mammutfs/anon.map
+ExecStart=/srv/mammutfs/mammut-fuse/tools/scan_public_list.py /etc/mammutfs/public-list.conf /etc/mammutfs/anon.map /etc/mammutfs/anon.map
 
 [Install]
 WantedBy=mammut-fuse-public.service

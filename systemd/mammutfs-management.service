@@ -1,11 +1,11 @@
 [Unit]
 Description=Mammutfs Management Service
-After=raidmounts.target
+After=mammut_ceph.service
 
 [Service]
 User=nobody
-WorkingDirectory=/usr/local/sbin/mammut-fuse/mammutfsd
-ExecStart=/usr/local/sbin/mammut-fuse/mammutfsd/mammutfsd.py --config /etc/mammutfs/mammutfs.conf
+WorkingDirectory=/srv/mammutfs/mammut-fuse
+ExecStart=/usr/bin/python3  -m mammutfsd --config /etc/mammutfs/mammutfs.conf
 Restart=on-failure
 
 [Install]
