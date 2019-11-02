@@ -16,7 +16,7 @@ import os
 import sys
 
 import argparse
-import libconf
+from . import libconf
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -310,9 +310,12 @@ class MammutfsDaemon:
         Read the list from the configfile and import the modules
         """
         cfg_plugins = list(self.config["mammutfsd"]["plugins"])
+
+        mfsd = __import__("mammutfsd")
         for pluginname in cfg_plugins + ['mammutfsd_help']:
             try:
-                module = __import__(pluginname)
+                __import__("mammutfsd." + pluginname)
+                module = getattr(mfsd, pluginname)
                 self._plugins.append(await module.init(self.loop, self))
             except AttributeError as exp:
                 # The plugin did not have a teardown method

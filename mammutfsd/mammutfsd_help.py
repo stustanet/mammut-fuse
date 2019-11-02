@@ -11,7 +11,6 @@ class MammutfsdHelp:
         self.mfsd.register('help', self.display_help)
 
     async def display_help(self, client, writer, _):
-        #import pdb; pdb.set_trace()
         for command, issuer in self.mfsd._commands.items():
             writer.write((" %s\n"%command).encode('utf-8'))
             for plugin in issuer:

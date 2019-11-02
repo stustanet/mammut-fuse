@@ -7,6 +7,7 @@ import sys
 import io
 import pwd
 import os
+import stat
 
 if len(sys.argv) > 1:
     configfile = sys.argv[1]
