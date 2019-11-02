@@ -107,28 +107,6 @@ public:
 		statbuf->st_uid = config->anon_uid;
 		statbuf->st_gid = config->anon_gid;
 
-		if (statbuf->st_mode & S_IFREG) {
-			int max_perm = S_IFMT | 0775;
-			config->lookupValue("lister_max_file_perm", max_perm, true);
-			statbuf->st_mode &= max_perm;
-
-			int min_perm = 0004;
-			config->lookupValue("lister_min_file_perm", min_perm, true);
-			statbuf->st_mode |= min_perm;
-
-		} else if (statbuf->st_mode & S_IFDIR) {
-			int max_perm = S_IFMT | 0775;
-			config->lookupValue("lister_max_dir_perm", max_perm, true);
-			statbuf->st_mode &= max_perm;
-
-			int min_perm = 0005;
-			config->lookupValue("lister_min_dir_perm", min_perm, true);
-			statbuf->st_mode |= min_perm;
-
-		} else {
-			return -ENOENT;
-		}
-
 		return retstat;
 	}
 
