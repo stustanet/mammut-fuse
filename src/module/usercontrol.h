@@ -58,7 +58,7 @@ public:
 
 		std::ifstream file(out, std::ios::in);
 		if (!file) {
-			this->warn("scan", "error opening config ` file ", out);
+			this->warn(0, "scan", "error opening config ` file ", out);
 			return;
 		}
 
@@ -124,7 +124,7 @@ public:
 		if (error) {
 			std::ofstream file(out, std::ios::out | std::ios::trunc);
 			if (!file) {
-				this->warn("scan", "error opening config ` file ", out);
+				this->warn(0, "scan", "error opening config ` file ", out);
 				return;
 			}
 			file << errorfile.str();

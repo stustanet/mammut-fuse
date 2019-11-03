@@ -38,7 +38,7 @@ public:
 		ERR = 3,
 	};
 
-	void log(LOG_LEVEL lvl, const std::string &msg, const std::string &path = "" );
+	void log(LOG_LEVEL lvl, int errnum, const std::string &msg, const std::string &path = "" );
 
 #ifdef ENABLE_TRACELOG
 	void trace(const std::string &method,
@@ -55,12 +55,14 @@ public:
 	          const std::string &path,
 	          const std::string &second_path = "");
 
-	void warn(const std::string &method,
+	void warn(int errnum,
+	          const std::string &method,
 	          const std::string &message,
 	          const std::string &path,
 	          const std::string &second_path = "");
 
-	void error(const std::string &method,
+	void error(int errnum,
+	           const std::string &method,
 	           const std::string &path,
 	           const std::string &second_path = "");
 

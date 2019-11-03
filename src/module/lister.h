@@ -159,7 +159,7 @@ public:
 
 			for (const auto  &entry : list) {
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
-					this->error("lister::readdir", "filler failed", path);
+					this->error(0, "lister::readdir", "filler failed", path);
 					return -ENOMEM;
 				}
 			}
@@ -215,7 +215,7 @@ private:
 
 		std::ifstream file(anon_mapping_file, std::ios::in);
 		if (!file) {
-			this->warn("scan", "error opening annon mapping` file ", anon_mapping_file);
+			this->warn(0, "scan", "error opening annon mapping` file ", anon_mapping_file);
 			return -1;
 		}
 		this->list.clear();

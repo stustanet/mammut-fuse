@@ -79,7 +79,7 @@ public:
 
 			for (const auto  &entry : this->basepathmapping) {
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
-					this->error("lister::readdir", "filler failed", path);
+					this->error(0, "lister::readdir", "filler failed", path);
 					return -ENOMEM;
 				}
 			}
@@ -123,8 +123,6 @@ private:
 			return;
 		}
 
-		this->log(LOG_LEVEL::INFO, "scanning public dir listing");
-
 		this->basepathmapping.clear();
 		this->basepathmapping_creation = now;
 
@@ -142,7 +140,7 @@ private:
 			// Iterate over the directory, adding in all directories (even empty ones)
 			DIR *dfd;
 			if ((dfd = ::opendir(backupraid.c_str())) == NULL) {
-				this->log(LOG_LEVEL::ERR,
+				this->log(LOG_LEVEL::ERR, 0,
 				          std::string() + "Can't open " + backupraid);
 				continue;
 			}
@@ -160,7 +158,7 @@ private:
 				struct stat stbuf ;
 				memset(&statbuf, 0, sizeof(statbuf));
 				if (::stat(fqdirname.c_str(), &stbuf) == -1) {
-					this->log(LOG_LEVEL::ERR,
+					this->log(LOG_LEVEL::ERR, 0,
 					          std::string() + "Can't open subdir " + fqdirname);
 					continue;
 				}
@@ -168,7 +166,7 @@ private:
 				if ((stbuf.st_mode & S_IFMT ) == S_IFDIR ) {
 					this->basepathmapping[dirname] = fqdirname;
 				} else {
-					this->log(LOG_LEVEL::ERR,
+					this->log(LOG_LEVEL::ERR, 0,
 					          std::string() + "skipping non-directory " + fqdirname);
 				}
 			}

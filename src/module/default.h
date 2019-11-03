@@ -15,7 +15,7 @@ public:
 		// It should not happen that translatepath is called - all module::*
 		// functions will do this, so check the log, which one it was and
 		// implement it here - doing some sensible stuff!
-		this->error("default::translatepath",
+		this->error(0, "default::translatepath",
 		            "An operation called translatepath for the default path!",
 		            path);
 		return -ENOTSUP;

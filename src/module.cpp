@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <string.h>
 #include <syslog.h>
-
+#include <errno.h>
 #include <iostream>
 #include <sstream>
 
@@ -101,7 +101,7 @@ int Module::find_raid(std::string &path) {
 		}
 	}
 	if (basepath == "") {
-		this->log(LOG_LEVEL::ERR, "Could not find Raid!! THIS IS BAD!");
+		this->log(LOG_LEVEL::ERR, 0, "Could not find Raid!! THIS IS BAD!");
 		return -ENOENT;
 	}
 
@@ -109,7 +109,8 @@ int Module::find_raid(std::string &path) {
 	return 0;
 }
 
-void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path) {
+
+void Module::log(LOG_LEVEL lvl, int errnum, const std::string &msg, const std::string &path) {
 	if (static_cast<int>(lvl) < static_cast<int>(this->max_loglvl)) {
 		return;
 	}
@@ -139,6 +140,11 @@ void Module::log(LOG_LEVEL lvl, const std::string &msg, const std::string &path)
 	if (path != "") {
 		ss << ": " << path;
 	}
+
+	if (errnum != 0) {
+		ss << " Errno: [" << errnum << "]: " << strerror(errnum);
+	}
+
 	std::cerr << prefix << ss.str() << suffix << std::endl;
 
 	// WRN and ERR to syslog
@@ -167,7 +173,7 @@ void Module::trace(const std::string &method,
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
-	log(LOG_LEVEL::TRACE, ss.str());
+	log(LOG_LEVEL::TRACE, 0, ss.str());
 }
 #endif
 
@@ -182,11 +188,12 @@ void Module::info(const std::string &method,
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
-	log(LOG_LEVEL::WRN, ss.str());
+	log(LOG_LEVEL::WRN, 0, ss.str());
 }
 
 
-void Module::warn(const std::string &method,
+void Module::warn(int errnum,
+                  const std::string &method,
                   const std::string &message,
                   const std::string &path,
                   const std::string &second_path) {
@@ -196,11 +203,12 @@ void Module::warn(const std::string &method,
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
-	log(LOG_LEVEL::WRN, ss.str());
+	log(LOG_LEVEL::WRN, errnum, ss.str());
 }
 
 
-void Module::error(const std::string &method,
+void Module::error(int errnum,
+                   const std::string &method,
                    const std::string &path,
                    const std::string &second_path) {
 	std::stringstream ss;
@@ -208,8 +216,9 @@ void Module::error(const std::string &method,
 	if (second_path != "") {
 		ss << " --> " << second_path;
 	}
-	log(LOG_LEVEL::ERR, ss.str());
+	log(LOG_LEVEL::ERR, errnum, ss.str());
 }
+
 
 // A default file handle does nothing
 Module::open_file_handle_t::open_file_handle_t(open_file_t *f, bool close) :
@@ -217,11 +226,13 @@ Module::open_file_handle_t::open_file_handle_t(open_file_t *f, bool close) :
 	should_close(close) {
 }
 
+
 Module::open_file_handle_t::open_file_handle_t(open_file_handle_t &&rhs) :
 	file(rhs.file),
 	should_close(rhs.should_close) {
 	rhs.file = nullptr;
 }
+
 
 // Closes the file upon leaving the control structure, releasing its contents
 // and especially its precious file descriptors.
@@ -245,6 +256,7 @@ Module::open_file_handle_t::~open_file_handle_t() {
 #endif
 }
 
+
 int Module::open_file_handle_t::fd() {
 	if (this->file->type != open_file_t::FILE) {
 		errno = EINVAL;
@@ -257,13 +269,14 @@ int Module::open_file_handle_t::fd() {
 		int flags = (this->file->flags & (O_RDONLY | O_WRONLY | O_RDWR)) | O_NOFOLLOW | O_APPEND;
 		this->file->fh.fd = ::open(this->file->path.c_str(), flags);
 		if (this->file->fh.fd < 0) {
-			std::cout << "ERROR opening file: " << strerror(errno) << std::endl;
+			std::cerr << strerror(errno) << "open_file_handle: ERROR opening file" << this->file->path;
 		}
 		this->file->is_open = true;
 	}
 #endif
 	return this->file->fh.fd;
 }
+
 
 DIR *Module::open_file_handle_t::dp() {
 	if (this->file->type != open_file_t::DIRECTORY) {
@@ -278,6 +291,7 @@ DIR *Module::open_file_handle_t::dp() {
 #endif
 	return this->file->fh.dp;
 }
+
 
 Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info *fi) {
 	// Check if there is already an open file.
@@ -322,6 +336,7 @@ void Module::close_file(const std::string &/*path*/, fuse_file_info *fi) {
 	}
 }
 
+
 void Module::close_file(const char *path, fuse_file_info *fi) {
 	close_file(std::string(path), fi);
 }
@@ -336,6 +351,7 @@ void Module::dump_open_files(std::ostream &s) {
 		  << "\"open\":\"" << t.second.is_open << "\"},";
 	}
 }
+
 
 int Module::getattr(const char *path, struct stat *statbuf) {
 	// Since getattr is spaming a _lot_, it should be more quiet to make the
@@ -369,7 +385,7 @@ int Module::getattr(const char *path, struct stat *statbuf) {
 		if (retstat) {
 			retstat = -errno;
 			if (errno != ENOENT) {
-				this->warn("getattr", "lstat failed", translated);
+				this->warn(errno, "getattr", "lstat failed", translated);
 			}
 		}
 	}
@@ -410,6 +426,7 @@ int Module::readlink(const char *path, char */*link*/, size_t /*size*/) {
 	return retstat;*/
 }
 
+
 /* Deprecated, use readdir() instead */
 int Module::getdir(const char *path, fuse_dirh_t, fuse_dirfil_t) {
 	this->trace("getdir", path);
@@ -435,7 +452,7 @@ int Module::mkdir(const char *path, mode_t mode) {
 
 	if ((retstat = ::mkdir(translated.c_str(), mode)) < 0) {
 		retstat = -errno;
-		this->warn("mkdir", "mkdir failed", translated);
+		this->warn(errno, "mkdir", "mkdir failed", translated);
 	}
 
 	return retstat;
@@ -454,7 +471,7 @@ int Module::unlink(const char *path) {
 
 	if ((retstat = ::unlink(translated.c_str()))) {
 		retstat = -errno;
-		this->warn("unlink", "unlink", translated);
+		this->warn(errno, "unlink", "unlink", translated);
 	}
 
 	return retstat;
@@ -473,7 +490,7 @@ int Module::rmdir(const char *path) {
 
 	if ((retstat = ::rmdir(translated.c_str()))) {
 		retstat = -errno;
-		this->warn("rmdir", "rmdir", translated);
+		this->warn(errno, "rmdir", "rmdir", translated);
 	}
 
 	return retstat;
@@ -501,7 +518,7 @@ int Module::rename(const char *sourcepath,
 
 	if ((retstat = ::rename(sourcepath, to_translated.c_str()) < 0)) {
 		retstat = -errno;
-		this->warn("rename", "rename", sourcepath, to_translated);
+		this->warn(errno, "rename", "rename", sourcepath, to_translated);
 	} else {
 		// Open files do not need to be modified, because of filesystem magic
 		// that linux provides - a file is not re-identified by its name but
@@ -524,7 +541,7 @@ int Module::chmod(const char *path, mode_t mode) {
 
 	if ((retstat = ::chmod(translated.c_str(), mode)) < 0) {;
 		retstat = -errno;
-		this->warn("chmod", "chmod", translated);
+		this->warn(errno, "chmod", "chmod", translated);
 	}
 
 	return retstat;
@@ -551,7 +568,7 @@ int Module::truncate(const char *path, off_t newsize) {
 		struct stat st;
 		memset(&st, 0, sizeof(st));
 		if (::stat(translated.c_str(), &st) != 0) {
-			this->warn("truncate", "stat", translated);
+			this->warn(errno, "truncate", "stat", translated);
 			return -errno;
 		}
 
@@ -563,7 +580,7 @@ int Module::truncate(const char *path, off_t newsize) {
 	retstat = ::truncate(translated.c_str(), newsize);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->warn("truncate", "truncate", translated);
+		this->warn(errno, "truncate", "truncate", translated);
 	} else {
 		// We cannot link to an open file.
 	}
@@ -586,7 +603,7 @@ int Module::open(const char *path, struct fuse_file_info *fi) {
 	int fd = ::open(translated.c_str(), fi->flags);
 	if (fd < 0) {
 		retstat = -errno;
-		this->warn("open", "open", translated);
+		this->warn(errno, "open", "open", translated);
 	} else {
 		auto f = this->file(translated, fi);
 		f.file->type = open_file_t::FILE;
@@ -614,7 +631,7 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 
 	retstat = ::pread(f.fd(), buf, size, offset);
 	if (retstat < 0) {
-		this->warn("read", "pread", translated);
+		this->warn(errno, "read", "pread", translated);
 		retstat = -errno;
 	}
 
@@ -640,7 +657,7 @@ int Module::write(const char *path, const char *buf, size_t size, off_t offset,
 	retstat = ::pwrite(fd, buf, size, offset);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->warn("write", "pwrite", translated);
+		this->warn(errno, "write", "pwrite", translated);
 	} else {
 		f.file->has_changed = true;
 	}
@@ -661,11 +678,10 @@ int Module::statfs(const char *path, struct statvfs *statv) {
 
 	// get stats for underlying filesystem
 	memset(statv, 0, sizeof(*statv));
-	printf("stat of %s -> %s\n", path, translated.c_str());
 	retstat = ::statvfs(translated.c_str(), statv);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->error("statfs", "statvfs", translated);
+		this->error(errno, "statfs", "statvfs", translated);
 	}
 
 	return retstat;
@@ -717,7 +733,7 @@ int Module::fsync(const char *path, int, struct fuse_file_info *fi) {
 	retstat = ::fsync(f.fd());
 	if (retstat < 0) {
 		errno = -retstat;
-		this->warn("fsync", "fsync", translated);
+		this->warn(errno, "fsync", "fsync", translated);
 	}
 #else
 	(void)fi;
@@ -763,7 +779,7 @@ int Module::opendir(const char *path, struct fuse_file_info *fi) {
 	DIR *dp = ::opendir(translated.c_str());
 	if (dp == NULL) {
 		retstat = -errno;
-		this->warn("opendir", "opendir", translated);
+		this->warn(errno, "opendir", "opendir", translated);
 		return retstat;
 	} else {
 		auto f = this->file(translated, fi);
@@ -862,7 +878,7 @@ int Module::create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 	int fd = ::creat(translated.c_str(), mode);
 	if (fd < 0) {
 		retstat = -errno;
-		this->warn("create", strerror(errno), translated);
+		this->warn(errno, "create", strerror(errno), translated);
 	} else {
 		// We do not like open files!
 		//::close(fd);
@@ -890,7 +906,7 @@ int Module::utimens(const char *path, const struct timespec tv[2]) {
 	retstat = ::utimensat(0, translated.c_str(), tv, 0);
 	if (retstat < 0) {
 		retstat = -errno;
-		this->warn("utimens", "utimesat", translated);
+		this->warn(errno, "utimens", "utimesat", translated);
 	}
 
 	return retstat;
