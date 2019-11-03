@@ -1,6 +1,7 @@
 [Unit]
 Description=Mammutfs user service for UID %i
 After=mammut_ceph.service
+Conflicts=wartung.target
 
 [Service]
 Type=forking
