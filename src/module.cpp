@@ -295,6 +295,15 @@ DIR *Module::open_file_handle_t::dp() {
 	return this->file->fh.dp;
 }
 
+void Module::open_file_handle_t::debug(std::ostream &os) {
+	os << "{file: " << file->path
+	   << ", type: " << file->type
+	   << ", flags: " << file->flags
+	   << ", open: " << file->is_open
+	   << ", changed " << file->has_changed
+	   << ", close: " << should_close
+	   << "}";
+}
 
 Module::open_file_handle_t Module::file(const std::string &path, fuse_file_info *fi) {
 	// Check if there is already an open file.
@@ -634,7 +643,10 @@ int Module::read(const char *path, char *buf, size_t size, off_t offset,
 
 	retstat = ::pread(f.fd(), buf, size, offset);
 	if (retstat < 0) {
-		this->warn(errno, "read", "pread", translated);
+		std::stringstream ss;
+		f.debug(ss);
+		ss << "{size: " << size << " offset: " << offset << "}";
+		this->warn(errno, "read", ss.str(), translated);
 		retstat = -errno;
 	}
 
@@ -659,8 +671,11 @@ int Module::write(const char *path, const char *buf, size_t size, off_t offset,
 	int fd = f.fd();
 	retstat = ::pwrite(fd, buf, size, offset);
 	if (retstat < 0) {
+		std::stringstream ss;
+		f.debug(ss);
+		ss << "{size: " << size << " offset: " << offset << "}";
+		this->warn(errno, "write", ss.str(), translated);
 		retstat = -errno;
-		this->warn(errno, "write", "pwrite", translated);
 	} else {
 		f.file->has_changed = true;
 	}

@@ -437,6 +437,7 @@ protected:
 		int fd();
 		DIR *dp();
 
+		void debug(std::ostream &os);
 		~open_file_handle_t();
 	};
 
