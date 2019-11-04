@@ -16,6 +16,7 @@ import json
 import libconf
 import tempfile
 import stat
+import pathlib
 
 ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
@@ -38,6 +39,9 @@ def list_anon_dir(path, old_entries):
 
     public_entries = []
     for anonuser in os.listdir(path):
+        if anonuser == ".mammut-suffix":
+            # Skip mammut suffix special file
+            continue
 
         if str.startswith(anonuser, "new_"):
             # Skip folders, starting with "new_" (part of the old balancer)
@@ -74,6 +78,13 @@ def list_anon_dir(path, old_entries):
                     stats['known'] += 1
                     public_entries.append((okey, out_path))
                     found = True
+
+                    suffix = okey[-3:]
+                    suffixfile = pathlib.Path(os.path.join(anonpath, entry, ".mammut-suffix"))
+                    print("Suffixfile", suffixfile)
+                    if not suffixfile.exists():
+                        suffixfile.write_text(suffix)
+                        print("Rewrite suffixfile")
                     break
             else:
                 stats['new'] += 1
@@ -83,18 +94,33 @@ def list_anon_dir(path, old_entries):
                         new_entry += "_"
                     else:
                         new_entry += char
+                # Check if the new folder contains a ".mammut-suffix" file
+
+                suffixfile = pathlib.Path(os.path.join(anonpath, entry, ".mammut-suffix"))
+                suffix = None
+                origsuffix = None
+                if suffixfile.exists():
+                    suffix = suffixfile.read_text()
+                    origsuffix = suffix
+                    print("Suffix from file", suffixfile)
+
                 # Repeat until a unique identifier was found;
                 while True:
+                    if suffix:
+                        test = "a_" + new_entry + "_" + suffix
+                        if not test in public_entries:
+                            break
+
                     # Generate a new random string for identification
-                    suffix = ''.join(
-                        random.choice(
-                            string.ascii_uppercase
-                            + string.ascii_lowercase
-                            + string.digits)
-                        for _ in range(3))
-                    test = "a_" + new_entry + "_" + suffix
-                    if not test in public_entries:
-                        break
+                    suffix = ''.join(random.choice(string.ascii_uppercase
+                                                + string.ascii_lowercase
+                                                + string.digits)
+                                    for _ in range(3))
+
+                if suffix != origsuffix:
+                    suffixfile.write_text(suffix)
+                    print("Rewrite suffixfile")
+                    
                 public_entries.append((test, anonpath + "/" + entry))
     return public_entries, stats
 

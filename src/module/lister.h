@@ -47,6 +47,17 @@ public:
 		return &this->list;
 	}
 
+	bool is_path_valid(const std::string &path) {
+		// Do not show any "./mammut-suffix" files.
+		// They are used to store the _ABC suffix in the anonmap
+		size_t delimiter = path.find_last_of('/');
+		if (delimiter != std::string::npos
+		    && 0 == path.compare(delimiter, path.size(), "/.mammut-suffix")) {
+			return false;
+		}
+		return true;
+	}
+
 	int translatepath(const std::string &path, std::string &out) override {
 		if (path == "/") {
 			out = "";

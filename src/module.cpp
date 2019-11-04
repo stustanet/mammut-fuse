@@ -73,6 +73,9 @@ Module::Module(const std::string &modname,
 
 
 int Module::translatepath(const std::string &path, std::string &out) {
+	if (!this->is_path_valid(path))
+		return -ENOENT;
+
 	std::string basepath;
 	int retval = find_raid(basepath);
 	out = basepath + path;
@@ -815,6 +818,9 @@ int Module::readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	struct dirent *de;
 	while ((de = ::readdir(dp)) != NULL) {
+		std::string path = translated + "/" + std::string(de->d_name);
+		if (!this->is_path_valid(path))
+			continue;
 		if (filler(buf, de->d_name, NULL, 0) != 0) {
 			return -ENOMEM;
 		}
@@ -913,3 +919,4 @@ int Module::utimens(const char *path, const struct timespec tv[2]) {
 }
 
 }
+

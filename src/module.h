@@ -78,6 +78,15 @@ public:
 	 */
 	virtual int translatepath(const std::string &path, std::string &out);
 
+	/** Check if a path is valid and should be displayed / accessible
+	 *
+	 * This can be used to hide certain files for the user but keep them for
+	 * Management purposes (for example .mammut_suffix in anon folders)
+	 */
+	virtual bool is_path_valid(const std::string &/*path*/) {
+		return true;
+	};
+
 	/** Locates a user on a raid
 	 *
 	 * locates a user on a raid for a given module.

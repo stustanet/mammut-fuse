@@ -3,6 +3,7 @@ import os
 import string
 import random
 import tempfile
+import pathlib
 
 ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
@@ -79,16 +80,30 @@ class AnonMap:
                 new_entry += "_"
             else:
                 new_entry += char
-            # Repeat until a unique identifier was found;
+        # Check if the new folder contains a ".mammut-suffix" file
+        suffixfile = pathlib.Path(os.path.join(path, ".mammut-suffix"))
+        suffix = None
+        origsuffix = None
+        if suffixfile.exists():
+            suffix = suffixfile.read_text()
+            origsuffix = suffix
+
+        # Repeat until a unique identifier was found;
         while True:
+            if suffix:
+                test = "a_" + new_entry + "_" + suffix
+                if not test in known_entries:
+                    break
+
             # Generate a new random string for identification
             suffix = ''.join(random.choice(string.ascii_uppercase
                                            + string.ascii_lowercase
                                            + string.digits)
                              for _ in range(3))
-            test = "a_" + new_entry + "_" + suffix
-            if not test in known_entries:
-                break
+
+        if suffix != origsuffix:
+            suffixfile.write_text(suffix)
+
         key = (user, path)
         entry = {
             'fullpath': os.path.join(raid, 'anonym', user, path),
