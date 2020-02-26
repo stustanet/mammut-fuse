@@ -81,10 +81,8 @@ def list_anon_dir(path, old_entries):
 
                     suffix = okey[-3:]
                     suffixfile = pathlib.Path(os.path.join(anonpath, entry, ".mammut-suffix"))
-                    print("Suffixfile", suffixfile)
                     if not suffixfile.exists():
                         suffixfile.write_text(suffix)
-                        print("Rewrite suffixfile")
                     break
             else:
                 stats['new'] += 1
@@ -102,7 +100,6 @@ def list_anon_dir(path, old_entries):
                 if suffixfile.exists():
                     suffix = suffixfile.read_text()
                     origsuffix = suffix
-                    print("Suffix from file", suffixfile)
 
                 # Repeat until a unique identifier was found;
                 while True:
@@ -119,8 +116,6 @@ def list_anon_dir(path, old_entries):
 
                 if suffix != origsuffix:
                     suffixfile.write_text(suffix)
-                    print("Rewrite suffixfile")
-                    
                 public_entries.append((test, anonpath + "/" + entry))
     return public_entries, stats
 
