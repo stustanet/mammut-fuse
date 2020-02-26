@@ -7,8 +7,24 @@ import sys
 from threading import Event
 import systemd.journal
 
+try:
+    with open("/etc/mammutfs/testuser") as testuserconfig:
+        uid = int(sys.argv[2])
+        pwnam = pwd.getpwuid(uid)
+        if pwnam.pw_name in testuserconfig.read():
+            tester = True
+        else:
+            tester = False
+except:
+    tester = False
+
 #CONFIG:
-mammutfs = "/srv/mammutfs/mammut-fuse/build/mammutfs"
+if tester:
+    mammutfs = "/srv/mammutfs/mammut-integration/build/mammutfs"
+    print("using mammutfs as a tester with a custom executable at", mammutfs)
+else:
+    mammutfs = "/srv/mammutfs/mammut-fuse/build/mammutfs"
+
 config_user = "/etc/mammutfs/user.conf"
 #home = "/tmp/{}".format(pwnam.pw_name)
 #END CONFIG
