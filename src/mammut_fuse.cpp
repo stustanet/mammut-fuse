@@ -260,6 +260,7 @@ int mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	// fuseargs.push_back("-onoforget");            // Do not forget inodes. keep them forever
 	                                               //- this might be enabled, if nfs is making troubles!
 	//fuseargs.push_back("-d");                    // Enable FUSE-DEBUG!
+	fuseargs.push_back("-obig_writes");            // HUGHE PERFORMANCE IMPACT! now at ceph level
 
 	if (!config->deamonize()) {
 		fuseargs.push_back("-f");
