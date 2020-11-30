@@ -262,6 +262,8 @@ int mammut_main (std::shared_ptr<ModuleResolver> resolver,
 	//fuseargs.push_back("-d");                    // Enable FUSE-DEBUG!
 	fuseargs.push_back("-obig_writes");            // HUGHE PERFORMANCE IMPACT! now at ceph level
 
+	fuseargs.push_back("-s");                      // Run singlethreaded to get rid of these nasty threads
+
 	if (!config->deamonize()) {
 		fuseargs.push_back("-f");
 	}
