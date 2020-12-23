@@ -155,7 +155,10 @@ def write_anonmap(anonmapfile, anonmap):
         try:
             for key, value in sorted(anonmap.items()):
                 line = key + ":" + value + "\n"
-                tmpfile.write(line)
+                try:
+                    tmpfile.write(line)
+                except:
+                    print("Somebody did some fuckups with a name", list(filter(lambda x: x in string.printable, line)))
         finally:
             tmpfile.flush()
     os.rename(tmpname, anonmapfile)
