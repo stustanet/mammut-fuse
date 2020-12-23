@@ -1,6 +1,8 @@
 [Unit]
 Description=Update Mammutfs Anonmap
 Before=mammut-fuse-public.service
+Wants=mammut_ceph.service
+After=mammut_ceph.service
 
 [Service]
 Type=simple
