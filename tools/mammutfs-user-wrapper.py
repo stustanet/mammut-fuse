@@ -44,6 +44,7 @@ def createhome(pwnam):
             (f"{base}/var/anonym/{pwnam.pw_name}", public),
             (f"{base}/var/authkeys/{pwnam.pw_name}", private),
     ]
+    authfile = f"{base}/var/authkeys/{pwnam.pw_name}/authorized_keys"
 
     for f, perm in to_create:
         try:
@@ -54,6 +55,15 @@ def createhome(pwnam):
             os.chmod(f, perm)
         except IOError as exc:
             log("IO Error: " + str(exc), PRIORITY=systemd.journal.LOG_ERR)
+
+    if not os.path.exists(authfile):
+        with open(authfile, 'w+') as fo:
+            fo.write("# This is the authorized_keys file for authenticating for sftp via a keyfile\n")
+            fo.write("# Please consult the wiki at https://wiki.stusta.de/Datenserver for details\n\n")
+
+        os.chown(authfile, pwnam.pw_uid, pwnam.pw_gid)
+        os.chmod(authfile, 0o600)
+
 
 def stop():
     # systemd keeps care of cleaning up all mounted fsses
@@ -89,8 +99,8 @@ def main():
         stop()
     elif 'start' == sys.argv[1]:
         uid = int(sys.argv[2])
-        # Local users have ids < 90k - so we will not mammutfs for them!
-        if uid < 90000:
+        # Local users have ids < 10k - so we will not mammutfs for them!
+        if uid < 10000:
             # but this is started as systemd.service:TYPE=forking
             # so we fork into a process that does nothing except wait for its death
             if os.fork() == 0:
