@@ -10,7 +10,6 @@
 #include "module/lister.h"
 #include "module/private.h"
 #include "module/public.h"
-#include "module/usercontrol.h"
 #include "module/fullbackuplist.h"
 
 
@@ -81,8 +80,6 @@ void setup_main() {
 	                         std::make_shared<mammutfs::Authkeys>(config, communicator));
 	resolver->registerModule("backup",
 	                         std::make_shared<mammutfs::Backup>(config, communicator));
-	resolver->registerModule("control",
-	                         std::make_shared<mammutfs::UserControl>(config, communicator));
 	resolver->registerModule("tsm-backup-list",
 	                         std::make_shared<mammutfs::FullBackupList>(config, communicator));
 
