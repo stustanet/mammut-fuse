@@ -5,6 +5,24 @@ Das Mammut File System stellt die Daten auf Mammut so als Mount-Points zur
 Verfügung, dass sie von den verschiedenen Diensten (SMB, FTP, WWW, SSHFS, ...)
 direkt genutzt werden können.
 
+
+Dependencies
+------------
+
+* build-essential
+* cmake
+* libconfig++-dev
+* fuse
+* libfuse-dev
+
+```
+useradd mammutfs
+```
+
+in `/etc/fuse`:
+erlaube `allow_other_users`
+
+
 Ausgangsstruktur
 -----------------
 
