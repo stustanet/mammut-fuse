@@ -38,7 +38,7 @@
 # implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #=============================================================================
 
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 
 ########## Private ##########
 function(fusedebug _varname)
@@ -132,9 +132,9 @@ endif(FUSE_FOUND)
 if(FUSE_INCLUDE_DIRS)
     include(FindPackageHandleStandardArgs)
     if(FUSE_FIND_REQUIRED AND NOT FUSE_FIND_QUIETLY)
-        find_package_handle_standard_args(FUSE REQUIRED_VARS FUSE_LIBRARIES FUSE_INCLUDE_DIRS VERSION_VAR FUSE_VERSION)
+        find_package_handle_standard_args(fuse REQUIRED_VARS FUSE_LIBRARIES FUSE_INCLUDE_DIRS VERSION_VAR FUSE_VERSION)
     else()
-        find_package_handle_standard_args(FUSE "FUSE not found" FUSE_LIBRARIES FUSE_INCLUDE_DIRS)
+        find_package_handle_standard_args(fuse "FUSE not found" FUSE_LIBRARIES FUSE_INCLUDE_DIRS)
     endif()
 else(FUSE_INCLUDE_DIRS)
     if(FUSE_FIND_REQUIRED AND NOT FUSE_FIND_QUIETLY)
