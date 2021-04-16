@@ -187,7 +187,8 @@ void Communicator::communication_thread() {
 			if (!queue.empty()) {
 				// Fake an activation
 				uint64_t buffer = 1;
-				// TODO asdf write of 8 can't be assumed
+				// JJ: write of 8 can't be assumed
+				// jotweh: the supplied FD is a eventfd (see man 2 eventfd), writing a value to it releases the semaphore (by adding the value supplied)
 				if (::write(this->queue.get_eventfd(), &buffer, sizeof(buffer)) < 0) {
 					perror("Event write");
 					continue;
@@ -208,7 +209,8 @@ void Communicator::communication_thread() {
 					}
 					uint8_t buffer[8];
 					// We have the input event pending
-					// TODO asdf: read of 8 can't be assumed!
+					// JJ: read of 8 can't be assumed!
+					// jotweh: the supplied fd is an eventfd (man 2 eventfd), reading a value will wait for != 0
 					if (::read(this->queue.get_eventfd(), buffer, sizeof(buffer)) < 0) {
 						perror("eventfd");
 						continue;
