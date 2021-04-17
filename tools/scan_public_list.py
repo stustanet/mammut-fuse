@@ -28,6 +28,7 @@ STAT_TEMPLATE = {
     'public':0
 }
 
+SUFFIX_FILENAME = ".mammut-suffix"
 
 def list_anon_dir(path, old_entries):
     """
@@ -39,7 +40,7 @@ def list_anon_dir(path, old_entries):
 
     public_entries = []
     for anonuser in os.listdir(path):
-        if anonuser == ".mammut-suffix":
+        if anonuser == SUFFIX_FILENAME:
             # Skip mammut suffix special file
             continue
 
@@ -65,8 +66,10 @@ def list_anon_dir(path, old_entries):
                 continue
 
             try:
-                # If the folder is empty we should safely ignore it;
-                if not list(os.listdir(localpath)):
+                # If the folder is empty we should safely ignore it
+                # it counts as empty if it only contains .mammut-suffix
+                direntries = list(os.listdir(localpath))
+                if not direntries or (len(direntries) == 1 and direntries[0] == SUFFIX_FILENAME):
                     continue
             except FileNotFoundError:
                 print("Should not be reached")
@@ -80,7 +83,7 @@ def list_anon_dir(path, old_entries):
                     found = True
 
                     suffix = okey[-3:]
-                    suffixfile = pathlib.Path(os.path.join(anonpath, entry, ".mammut-suffix"))
+                    suffixfile = pathlib.Path(os.path.join(anonpath, entry, SUFFIX_FILENAME))
                     if not suffixfile.exists():
                         suffixfile.write_text(suffix)
                     break
@@ -94,7 +97,7 @@ def list_anon_dir(path, old_entries):
                         new_entry += char
                 # Check if the new folder contains a ".mammut-suffix" file
 
-                suffixfile = pathlib.Path(os.path.join(anonpath, entry, ".mammut-suffix"))
+                suffixfile = pathlib.Path(os.path.join(anonpath, entry, SUFFIX_FILENAME))
                 suffix = None
                 origsuffix = None
                 if suffixfile.exists():
