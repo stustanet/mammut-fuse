@@ -152,15 +152,15 @@ def write_anonmap(anonmapfile, anonmap):
     tmpname = anonmapfile + '.mammutfsd.' + suffix
 
     with open(tmpname, "w+") as tmpfile:
-        try:
-            for key, value in sorted(anonmap.items()):
-                line = key + ":" + value + "\n"
-                try:
-                    tmpfile.write(line)
-                except:
-                    print("Somebody did some fuckups with a name", list(filter(lambda x: x in string.printable, line)))
-        finally:
-            tmpfile.flush()
+        for key, value in sorted(anonmap.items()):
+            line = key + ":" + value + "\n"
+            try:
+                tmpfile.write(line)
+            except UnicodeError as ue:
+                print(key, "Unicode Error - will skip", ue)
+            except Exception as e:
+                print(key, ": Somebody did some fuckups with a name", list(filter(lambda x: x in string.printable, line)))
+                print(e)
     os.rename(tmpname, anonmapfile)
 
 
@@ -216,7 +216,11 @@ def trigger_update(config):
     """
     Send mammutfsd that it should update the anonmapping
     """
-    retval = send_to_mammutfs(config, b"reload")
+    retval = send_to_mammutfs(config, b"reload").strip()
+    if not retval:
+        print("Did not recveive responses.")
+        return 2;
+
     try:
         status = json.loads(retval.decode('utf-8'))
     except json.JSONDecodeError:
