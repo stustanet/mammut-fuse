@@ -99,7 +99,6 @@ class MammutfsdClient:
                     await self._request_queue.put(data)
                 else:
                     await self.process_message(data)
-
         finally:
             removal_queue.put_nowait(self)
             self.mfsd.log.info("fs client disconnect")
@@ -255,6 +254,12 @@ class MammutfsDaemon:
 
         loop.run_until_complete(self._load_plugins())
 
+        self.register("kill_yourself", self.cmd_shutdown)
+
+    async def cmd_shutdown(self, client, writer, cmd):
+        writer.write(b"Stopping the daemon. goodbye")
+        await writer.drain()
+        self.loop.stop()
 
     async def client_management(self):
         """
@@ -280,14 +285,12 @@ class MammutfsDaemon:
                 await to_remove.close()
         finally:
             server.close()
-            await server.drain()
 
 
     async def client_connected(self, reader, writer, removal_queue):
         """
         Called whenever a new mammutfs connected
         """
-        self.log.info("client connected")
         client = MammutfsdClient(reader, writer, self, removal_queue)
         self._clients.append(client)
         await self.call_plugin('on_client', client, {}, writer=None)
@@ -415,6 +418,8 @@ class MammutfsDaemon:
                     # and hope it was the lineargs problem
         except ConnectionResetError:
             pass
+        except ConnectionError as e:
+            print("Caught Conn Error", e)
         finally:
             # Upon termination. remove the writer again
             self._writers = [w for w in self._writers if w != writer]
@@ -451,6 +456,8 @@ class MammutfsDaemon:
         noevent = asyncio.Event(loop=self.loop)
         try:
             await noevent.wait()
+        except asyncio.CancelledError:
+            pass
         finally:
             if stdin_task:
                 stdin_task.cancel()
@@ -460,7 +467,6 @@ class MammutfsDaemon:
                     pass
 
             server.close()
-            await server.drain()
 
     async def sendall(self, command):
         """

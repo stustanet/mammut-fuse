@@ -9,7 +9,7 @@ ALLOWED_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits\
                 + "!&()+,-.=_"
 class AnonMap:
     """
-    Management of the anonymous mapping of mapput
+    Management of the anonymous mapping of mammut
     """
 
     def __init__(self, mapfile, log):
@@ -280,6 +280,7 @@ class MammutfsdBaseCommands:
         if len(cmd) < 2:
             writer.write("Error: Usage {} config\n".format(cmd[0]).encode('utf-8'))
             await writer.drain()
+            return
         await self.send("CONFIG " + cmd[1], allow_targeting=True)
 
     async def getclients(self, client, writer, cmd):
