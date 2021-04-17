@@ -5,6 +5,8 @@
 #include "../mammut_config.h"
 #include "../communicator.h"
 
+#include <algorithm>
+
 namespace mammutfs {
 
 
@@ -32,7 +34,7 @@ public:
 		// They are used to store the _ABC suffix in the anonmap
 		size_t delimiter = path.find_last_of('/');
 		if (delimiter != std::string::npos
-		    && 0 == path.compare(delimiter, path.size(), "/.mammut-suffix")) {
+		    && 0 == path.compare(delimiter, path.size(), ANON_SUFFIX_FILENAME)) {
 			return false;
 		}
 		return true;
@@ -53,6 +55,27 @@ public:
 	}
 
 	virtual int rmdir(const char *path) override {
+		// remove the suffix file whenever a anon root directory should be removed.
+		{
+			std::string spath = path;
+			auto path_len = std::count_if(spath.begin(), spath.end(), [](char c){ return c == '/'; });
+			if (path_len == 1) {
+				// we need to construct the path to the suffix file manually,
+				// since any this->translatepath access to the suffix file is disabled.
+				std::string translated;
+				int retstat = 0;
+				if ((retstat = this->translatepath(path, translated))) {
+					this->info("rmdir", "root translatepath failed", path);
+					return retstat;
+				}
+				translated += ANON_SUFFIX_FILENAME;
+				retstat = ::unlink(translated.c_str());
+				if(retstat != 0) {
+					this->error(errno, "rmdir", "suffixfile", translated);
+				}
+			}
+		}
+
 		int ret = Module::rmdir(path);
 		if (ret == 0)
 			inotify("RMDIR", path);
