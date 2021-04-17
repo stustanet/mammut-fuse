@@ -17,12 +17,6 @@ set(ENABLE_WRITE_NOTIFY NO CACHE BOOL
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
-find_package(Config++ REQUIRED)
-find_package(fuse REQUIRED)
-
-add_definitions("-ggdb -Og -pthread -D_FILE_OFFSET_BITS=64 -Wall -Wextra
--pedantic")
-add_executable(mammutfs ${SOURCES} ${HEADERS})
 set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
 
 target_sources(mammutfs PRIVATE 
