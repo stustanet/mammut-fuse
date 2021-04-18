@@ -29,7 +29,7 @@ public:
 		anon_map(anon_map) {
 	}
 
-	virtual bool is_path_valid(const std::string &path) {
+	virtual bool is_path_valid(const std::string &path) override {
 		// Do not show any "./mammut-suffix" files.
 		// They are used to store the _ABC suffix in the anonmap
 		size_t delimiter = path.find_last_of('/');
@@ -44,6 +44,7 @@ public:
 		int ret = Module::mkdir(path, mode);
 		if (ret == 0)
 			inotify("MKDIR", path);
+
 		return ret;
 	}
 

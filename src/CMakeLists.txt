@@ -14,12 +14,17 @@ set(TRACE_GETATTR NO CACHE BOOL
 set(ENABLE_WRITE_NOTIFY NO CACHE BOOL
 	"Send WRITE (thousands) notifications to mammutfsd.")
 
+set(ENABLE_AGGRESSIVE_LISTER_FILE_EXISTENCE_CHECK YES CACHE BOOL
+	"When listing the root of the lister, check for every listed file if it still exists.")
+
+
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in
 	${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
 set_property(TARGET mammutfs PROPERTY CXX_STANDARD 14)
 
-target_sources(mammutfs PRIVATE 
+target_sources(mammutfs PRIVATE
 	communicator.cpp
 	main.cpp
 	mammut_config.cpp

@@ -5,7 +5,7 @@
 #cmakedefine ENABLE_CONFIG_DEBUG
 #cmakedefine TRACE_GETATTR
 #cmakedefine ENABLE_WRITE_NOTIFY
-
+#cmakedefine ENABLE_AGGRESSIVE_LISTER_FILE_EXISTENCE_CHECK
 
 // the anonmapping uses a hidden-hidden file to store the public listing suffix
 // This file should be ignored for any other interactions.

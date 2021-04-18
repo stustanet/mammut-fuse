@@ -168,7 +168,20 @@ public:
 			filler(buf, "..", NULL, 0);
 			filler(buf, "core", NULL, 0);
 
-			for (const auto  &entry : list) {
+			for (const auto  &entry : this->list) {
+
+#ifdef ENABLE_AGGRESSIVE_LISTER_FILE_EXISTENCE_CHECK
+				struct stat statbuf;
+				int retval = this->getattr(("/" + entry.first).c_str(), &statbuf);
+				if (retval == -ENOENT) {
+					// SKIP a nonexisting file
+					continue;
+				} else if (retval != 0) {
+					this->error(0, "listr::readdir::getattr", "attribute requuest failed");
+					continue;
+				}
+#endif
+
 				if (filler(buf, entry.first.c_str(), NULL, 0) != 0) {
 					this->error(0, "lister::readdir", "filler failed", path);
 					return -ENOMEM;
@@ -263,6 +276,7 @@ private:
 	}
 
 	timespec anonmap_mtime;
+
 	std::map<std::string, std::string> list;
 	std::shared_ptr<Communicator> comm;
 };
