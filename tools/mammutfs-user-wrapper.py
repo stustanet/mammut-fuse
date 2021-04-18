@@ -6,6 +6,7 @@ import stat
 import sys
 from threading import Event
 import systemd.journal
+import time
 
 try:
     with open("/etc/mammutfs/testuser") as testuserconfig:
@@ -21,7 +22,8 @@ except:
 #CONFIG:
 if tester:
     mammutfs = "/srv/mammutfs/mammut-integration/build/mammutfs"
-    print("using mammutfs as a tester with a custom executable at", mammutfs)
+    epochedit = os.path.getatime(mammutfs)
+    print("using mammutfs as a tester with a custom executable at", mammutfs, "with age", time.time() - epochedit, "s")
 else:
     mammutfs = "/srv/mammutfs/mammut-fuse/build/mammutfs"
 
@@ -99,8 +101,8 @@ def main():
         stop()
     elif 'start' == sys.argv[1]:
         uid = int(sys.argv[2])
-        # Local users have ids < 10k - so we will not mammutfs for them!
-        if uid < 10000:
+        # Local users have ids < 90k - so we will not mammutfs for them!
+        if uid < 90000:
             # but this is started as systemd.service:TYPE=forking
             # so we fork into a process that does nothing except wait for its death
             if os.fork() == 0:
