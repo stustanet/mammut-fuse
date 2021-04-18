@@ -10,7 +10,6 @@
 #include "module/lister.h"
 #include "module/private.h"
 #include "module/public.h"
-#include "module/fullbackuplist.h"
 
 
 #include <sstream>
@@ -80,8 +79,6 @@ void setup_main() {
 	                         std::make_shared<mammutfs::Authkeys>(config, communicator));
 	resolver->registerModule("backup",
 	                         std::make_shared<mammutfs::Backup>(config, communicator));
-	resolver->registerModule("tsm-backup-list",
-	                         std::make_shared<mammutfs::FullBackupList>(config, communicator));
 
 	// Filter the modules to the active ones
 	config->filterModules(resolver);
