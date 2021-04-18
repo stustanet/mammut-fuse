@@ -131,12 +131,13 @@ class MammutfsdClient:
         """
         while True:
             data = await self._plugin_fileop_queue.get()
-            try:
-                await asyncio.wait_for(
-                    self.mfsd.call_plugin('on_fileop', self, data, writer=None),
-                    5)
-            except asyncio.TimeoutError:
-                print("Some plugin has timed out. This is bad!")
+            #try:
+            #    await asyncio.wait_for(
+            #        self.mfsd.call_plugin('on_fileop', self, data, writer=None),
+            #        5)
+            #except asyncio.TimeoutError:
+            #    print("Some plugin has timed out. This is bad!")
+            await self.mfsd.call_plugin('on_fileop', self, data, writer=None)
 
 
     async def request(self, command):
@@ -373,10 +374,10 @@ class MammutfsDaemon:
             w.write(message.encode('utf-8'))
             w.write(b"\n")
 
-        retvals = await asyncio.gather(*[w.drain() for w in self._writers])
+        retvals = await asyncio.gather(*[w.drain() for w in self._writers], return_exceptions=True)
 
         closed = []
-        for r, w in zip(self._writers, retvals):
+        for w, r in zip(self._writers, retvals):
             if isinstance(r, Exception):
                 w.close()
                 await w.drain()
@@ -416,8 +417,6 @@ class MammutfsDaemon:
                                  .encode('utf-8'))
                     await writer.drain()
                     # and hope it was the lineargs problem
-        except ConnectionResetError:
-            pass
         except ConnectionError as e:
             print("Caught Conn Error", e)
         finally:

@@ -63,7 +63,7 @@ class AnonMap:
         self.mapping[key] = entry
         self.write_anonmap()
 
-    def _generate_anon_entry(self, user, path, raid):
+    def _generate_anon_entry(self, user, filepath, raid):
         """
         Create a new anonmap entry
         """
@@ -72,7 +72,7 @@ class AnonMap:
                          for key, value in self.mapping.items()
                          if key[0] != 'public']
 
-        path = path.strip('/').split('/')[0]
+        path = filepath.strip('/').split('/')[0]
 
         new_entry = ""
         for char in path:
@@ -81,7 +81,7 @@ class AnonMap:
             else:
                 new_entry += char
         # Check if the new folder contains a ".mammut-suffix" file
-        suffixfile = pathlib.Path(os.path.join(path, ".mammut-suffix"))
+        suffixfile = pathlib.Path(os.path.join(raid, filepath.strip("/"), ".mammut-suffix"))
         suffix = None
         origsuffix = None
         if suffixfile.exists():
@@ -101,6 +101,7 @@ class AnonMap:
                                            + string.digits)
                              for _ in range(3))
 
+        print("Generating Suffixfile", suffixfile, "with suffix", suffix, "on raid ", raid)
         if suffix != origsuffix:
             suffixfile.write_text(suffix)
 
@@ -327,21 +328,22 @@ class MammutfsdBaseCommands:
 
         More might follow, when mammutfs gets more and more modules
         """
+        print("FileOP:", fileop)
         if (fileop['op'] in ('MKDIR', 'RMDIR')
             and fileop['module'] in ('anonym')
             and self.is_anon_root(fileop['path'])):
 
             if fileop['op'] == 'MKDIR':
                 await self.anon_map.add_entry(fileop['module'],
-                                              await client.user(fileop['module']),
+                                              await client.user(),
                                               fileop['path'],
                                               await client.anonym_raid())
             elif fileop['op'] == 'RMDIR':
                 await self.anon_map.remove_entry(fileop['module'],
-                                                 await client.user(fileop['module']),
+                                                 await client.user(),
                                                  fileop['path'])
 
-            await self.command(['reload'], allow_targeting=False)
+            await self.command(client, writer, ['reload'], allow_targeting=False)
 
     async def on_namechange(self, source, dest, **kwargs):
         """ The user config of a user has changed, so reload it """

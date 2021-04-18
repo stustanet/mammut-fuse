@@ -3,7 +3,7 @@ Description=Mammutfs Management Service
 After=mammut_ceph.service
 
 [Service]
-User=nobody
+User=mammut-management
 WorkingDirectory=/srv/mammutfs/mammut-fuse
 ExecStart=/usr/bin/python3  -m mammutfsd --config /etc/mammutfs/mammutfs.conf
 Restart=on-failure
