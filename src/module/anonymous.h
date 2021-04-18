@@ -41,6 +41,7 @@ public:
 	}
 
 	virtual int mkdir(const char *path, mode_t mode) override {
+		mode |= S_IROTH | S_IXOTH;
 		int ret = Module::mkdir(path, mode);
 		if (ret == 0)
 			inotify("MKDIR", path);
@@ -137,10 +138,20 @@ public:
 	virtual int create(const char *path,
 	                   mode_t mode,
 	                   struct fuse_file_info *fi) override {
+		mode |= S_IROTH;
 		int ret = Module::create(path, mode, fi);
 		if (ret == 0)
 			inotify("CREATE", path);
 		return ret;
+	}
+
+	virtual int chmod(const char *path, mode_t mode) override {
+		if (S_ISREG(mode)) {
+			mode |= S_IROTH;
+		} else if (S_ISDIR(mode)) {
+			mode |= S_IROTH | S_IXOTH;
+		}
+		return Module::chmod(path, mode);
 	}
 
 protected:
