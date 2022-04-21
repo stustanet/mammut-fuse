@@ -34,19 +34,19 @@ config_user = "/etc/mammutfs/user.conf"
 def log(msg, PRIORITY=systemd.journal.LOG_INFO):
     systemd.journal.send(msg, PRIORITY=PRIORITY, SYSLOG_IDENTIFIER="createhome")
 
-def createhome(pwnam):
+def createhome(pwnam, homename):
     base = '/srv/mammut/storage'
     private = 0o700 #stat.S_IRUSR | stat.S_IWUSR |stat.S_IXUSR
     public = 0o755  #private | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
     to_create = [
-            (f"/srv/home/{pwnam.pw_name}", private),
-            (f"{base}/backup/{pwnam.pw_name}", private),
-            (f"{base}/var/public/{pwnam.pw_name}", public),
-            (f"{base}/var/private/{pwnam.pw_name}", private),
-            (f"{base}/var/anonym/{pwnam.pw_name}", public),
-            (f"{base}/var/authkeys/{pwnam.pw_name}", private),
+            (f"/srv/home/{homename}", private),
+            (f"{base}/backup/{homename}", private),
+            (f"{base}/var/public/{homename}", public),
+            (f"{base}/var/private/{homename}", private),
+            (f"{base}/var/anonym/{homename}", public),
+            (f"{base}/var/authkeys/{homename}", private),
     ]
-    authfile = f"{base}/var/authkeys/{pwnam.pw_name}/authorized_keys"
+    authfile = f"{base}/var/authkeys/{homename}/authorized_keys"
 
     for f, perm in to_create:
         try:
@@ -73,12 +73,19 @@ def stop():
 
 def start(uid):
     pwnam = pwd.getpwuid(uid)
-    createhome(pwnam)
-    home = f"/srv/home/{pwnam.pw_name}"
+
+    # get the homename dir, assumption: homename is the last component of the home path
+    # We know that this is kind of hacky, however we still chose to use this for the
+    # sake of simplicity
+    # (c) JW, Jobi
+    homename = pwnam.pw_dir.split("/")[-1]
+    createhome(pwnam, homename)
+    home = pwnam.pw_dir
     # Start mammutfs with arguments
     args = [mammutfs, config_user,
             "--mountpoint", home,
-            "--username", pwnam.pw_name]
+            "--username", pwnam.pw_name,
+            "--homename", homename]
 
     ## Force jotweh to run in foreground. DO NOT DO THIS UNDER AUTOMOUNT CONDITIONS!
     #if pwnam.pw_name == "007394":

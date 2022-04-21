@@ -62,6 +62,15 @@ public:
 	bool deamonize() { return this->lookupValue<bool>("deamonize"); }
 	int64_t truncate_max_size() { return this->lookupValue<int64_t>("truncate_maxsize"); }
 	std::string anon_username() { return this->lookupValue<std::string>("anon_user_name"); }
+	std::string homename() { 
+		std::string name;
+		if(this->lookupValue<std::string>("homename", name, true)){
+			return name;
+		}else{
+			// backward compability
+			return this->username();
+		}
+	}
 	std::string username() { return this->lookupValue<std::string>("username"); }
 	std::string mountpoint() { return this->lookupValue<std::string>("mountpoint"); }
 	std::string anon_mapping_file() { return this->lookupValue<std::string>("anon_mapping_file"); }

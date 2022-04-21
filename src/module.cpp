@@ -90,7 +90,7 @@ int Module::find_raid(std::string &path) {
 	}
 
 	for (const auto &raid : config->raids) {
-		std::string to_test = raid + "/" + modname + "/" + config->username();
+		std::string to_test = raid + "/" + modname + "/" + config->homename();
 
 		//this->log(LOG_LEVEL::INFO, std::string("Testing raid " + to_test));
 		struct stat statbuf;
