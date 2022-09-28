@@ -3,6 +3,7 @@
 #include "../module.h"
 #include "../mammut_config.h"
 
+#include <mutex>
 #include <fstream>
 
 namespace mammutfs {
@@ -228,6 +229,7 @@ public:
 private:
 	int rescan() {
 		// Read the mapping file
+		std::unique_lock<std::mutex> lock(this->mutex);
 		std::string anon_mapping_file = config->anon_mapping_file();
 		std::stringstream ss;
 		ss << "using anon map: " << anon_mapping_file;
@@ -278,6 +280,7 @@ private:
 	timespec anonmap_mtime;
 
 	std::map<std::string, std::string> list;
+	std::mutex mutex;
 	std::shared_ptr<Communicator> comm;
 };
 
